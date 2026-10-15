@@ -183,7 +183,15 @@ class PreparationTests(unittest.TestCase):
             path.write_text(original)
 
     def test_calendar_gap_is_not_a_previous_week(self):
-        from pricecatcher_features import make_features
+        namespace = {}
+        notebook = nbformat.read(ROOT / "05_features_and_labels.ipynb", as_version=4)
+        # Extract the same short function used by 05, without running preparation again.
+        import ast
+        for cell in notebook.cells:
+            if cell.cell_type == "code" and "def make_features(" in cell.source:
+                function = next(node for node in ast.parse(cell.source).body if isinstance(node, ast.FunctionDef) and node.name == "make_features")
+                exec("import pandas as pd\n" + ast.unparse(function), namespace)
+        make_features = namespace["make_features"]
         frame = pd.DataFrame({"week_start": pd.to_datetime(["2025-01-06", "2025-01-20", "2025-01-27"]),
                               "weekly_median_price": [10., 12., 15.], "record_count": [2, 2, 2], "premise_count": [1, 1, 1]})
         result = make_features(frame)

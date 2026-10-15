@@ -1,4 +1,4 @@
-"""Shared settings for Notebooks 01–05. Keep this file beside the notebooks."""
+"""Shared settings for Notebooks 01–06. Keep this file beside the notebooks."""
 from pathlib import Path
 from datetime import date
 import os

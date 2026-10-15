@@ -13,10 +13,15 @@ import numpy as np
 import pandas as pd
 
 import test_preparation as fixtures
-from pricecatcher_modelling import (build_pipeline, choose_cutoff, evaluate,
-                                    model_inputs, grouped_metrics, check_frame)
 
 ROOT = Path(__file__).resolve().parents[1]
+# Load the notebook's function-only cell; no separate application helper module is needed.
+_namespace = {}
+for _cell in nbformat.read(ROOT / "06_model_training_and_evaluation.ipynb", as_version=4).cells:
+    if _cell.cell_type == "code" and _cell.source.startswith("# Shared modelling calculations"):
+        exec(compile(_cell.source, "notebook-modelling-functions", "exec"), _namespace)
+for _name in ["build_pipeline", "choose_cutoff", "evaluate", "model_inputs", "grouped_metrics", "check_frame", "food_group_scores", "verify_saved_run"]:
+    globals()[_name] = _namespace[_name]
 
 
 class ModellingTests(unittest.TestCase):
@@ -57,6 +62,14 @@ class ModellingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "both validation classes"):
             choose_cutoff([0, 0], [.1, .2])
 
+    def test_food_group_baseline_uses_training_only_and_has_fallback(self):
+        training = pd.DataFrame({"project_group": ["Eggs", "Eggs", "Sugar", "Sugar"], "surge_label": [0, 1, 0, 0]})
+        future = pd.DataFrame({"project_group": ["Eggs", "Sugar", "Unknown"], "surge_label": [1, 1, 1]})
+        expected = np.array([.5, 0., .25])
+        np.testing.assert_allclose(food_group_scores(training, future), expected)
+        future["surge_label"] = 0
+        np.testing.assert_allclose(food_group_scores(training, future), expected)
+
     def test_notebook_runs_and_saved_pipeline_reproduces_test_scores(self):
         fixtures.PreparationTests.setUpClass()
         try:
@@ -72,6 +85,9 @@ class ModellingTests(unittest.TestCase):
             }))
             notebook = nbformat.read(ROOT / "06_model_training_and_evaluation.ipynb", as_version=4)
             nbformat.validate(notebook)
+            for cell in notebook.cells:
+                if cell.cell_type == "code":
+                    cell.source = cell.source.replace('RUN_MODE = "reuse"', 'RUN_MODE = "train"')
             with patch.dict(os.environ, {"JUPYTER_PATH": str(kernel_root) + os.pathsep + os.environ.get("JUPYTER_PATH", "")}):
                 NotebookClient(notebook, timeout=240, kernel_name="pricecatcher-test",
                     resources={"metadata": {"path": str(ROOT)}}).execute()
@@ -96,6 +112,37 @@ class ModellingTests(unittest.TestCase):
             self.assertEqual(len(manifest["code_sha256"]), 3)
             self.assertEqual(len(manifest["model_sha256"]), 64)
             self.assertTrue((outputs / "test_evaluation.png").exists())
+            self.assertTrue((outputs / "supplementary" / "food_group_baseline.csv").exists())
+            source_quality = pd.read_csv(outputs / "supplementary" / "validation_source_quality.csv")
+            validation = pd.read_parquet(cfg.STAGE5_DIR / "validation.parquet")
+            self.assertEqual(source_quality.rows.sum(), len(validation))
+            import hashlib
+            before = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in outputs.iterdir() if p.is_file()}
+            reuse_notebook = nbformat.read(ROOT / "06_model_training_and_evaluation.ipynb", as_version=4)
+            with patch.dict(os.environ, {"JUPYTER_PATH": str(kernel_root) + os.pathsep + os.environ.get("JUPYTER_PATH", "")}):
+                NotebookClient(reuse_notebook, timeout=240, kernel_name="pricecatcher-test",
+                    resources={"metadata": {"path": str(ROOT)}}).execute()
+            after = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in outputs.iterdir() if p.is_file()}
+            self.assertEqual(before, after)
+            import subprocess
+            runner = subprocess.run([sys.executable, str(ROOT / "prepare.py"), "--experiment", "all"],
+                                    check=True, capture_output=True, text=True)
+            self.assertEqual(runner.stdout.count("existing preparation reused"), 4)
+            verify_saved_run(outputs, cfg.PROJECT_ROOT)
+            # Deliberate refresh cannot overwrite inputs of an exposed completed experiment.
+            blocked = subprocess.run([sys.executable, str(ROOT / "prepare.py"), "--experiment", "holdout", "--refresh"],
+                                     capture_output=True, text=True)
+            self.assertNotEqual(blocked.returncode, 0)
+            self.assertIn("completed model exists", blocked.stderr)
+            original_selection = (outputs / "selection.json").read_text()
+            changed = json.loads(original_selection)
+            changed["score_cutoff"] = .123456
+            (outputs / "selection.json").write_text(json.dumps(changed))
+            try:
+                with self.assertRaisesRegex(ValueError, "Selection differs"):
+                    verify_saved_run(outputs, cfg.PROJECT_ROOT)
+            finally:
+                (outputs / "selection.json").write_text(original_selection)
             self.assertNotIn("surge_label", pd.read_parquet(outputs / "latest_predictions.parquet"))
             broken = test.copy()
             broken.loc[broken.index[0], "next_week_end"] = pd.Timestamp("2027-01-01")

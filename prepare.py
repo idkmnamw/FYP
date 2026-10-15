@@ -1,13 +1,12 @@
 """Run the same readable notebooks for one experiment or all expanding folds."""
 import argparse
 import json
+import hashlib
 import os
 from pathlib import Path
 import subprocess
 import sys
 
-import nbformat
-from nbclient import NotebookClient
 
 REPOSITORY = Path(__file__).resolve().parent
 EXPERIMENTS = ["fold_1", "fold_2", "fold_3", "holdout"]
@@ -17,6 +16,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--experiment", choices=EXPERIMENTS + ["all"], default="holdout")
     parser.add_argument("--diagnostics", action="store_true", help="Also run optional Notebook 90")
+    parser.add_argument("--refresh", action="store_true", help="Regenerate preparation for a study without a saved model")
     args = parser.parse_args()
     if args.experiment == "all":
         # Separate processes keep settings and notebook kernels isolated between folds.
@@ -24,11 +24,32 @@ def main():
             command = [sys.executable, str(Path(__file__).resolve()), "--experiment", experiment]
             if args.diagnostics:
                 command.append("--diagnostics")
+            if args.refresh:
+                command.append("--refresh")
             subprocess.run(command, check=True, cwd=REPOSITORY)
         return
 
     os.environ["PRICECATCHER_EXPERIMENT"] = args.experiment
     import pricecatcher_config as cfg
+
+    required = [cfg.STAGE5_DIR / name for name in ["experiment_settings.json", "train.parquet",
+                "validation.parquet", "latest_prediction_inputs.parquet"]]
+    if cfg.TEST_END_DATE:
+        required.append(cfg.STAGE5_DIR / "test.parquet")
+    required += [cfg.STAGE4_WEEKLY_PARQUET, cfg.STAGE4_DIR / "preparation_settings.json"]
+    complete = all(path.exists() for path in required)
+    if complete:
+        settings = json.loads((cfg.STAGE5_DIR / "experiment_settings.json").read_text())
+        complete = all(settings["preparation"].get(key) == value for key, value in cfg.PREPARATION_SETTINGS.items())
+        manifest_path = cfg.STAGE1_DIR / "source_manifest.json"
+        if manifest_path.exists():
+            complete = complete and settings["preparation"]["source_manifest_sha256"] == hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+    prepare_needed = args.refresh or not complete
+    if prepare_needed and (cfg.PROJECT_ROOT / "06_models" / "best_model.joblib").exists():
+        raise SystemExit("A completed model exists. Restore its original prepared files instead of regenerating them. Use a separate PRICECATCHER_DATA_DIR for a new study.")
+    if not prepare_needed and not args.diagnostics:
+        print(f"{cfg.EXPERIMENT}: existing preparation reused at {cfg.RUN_DIR}")
+        return
 
     # Use this Python environment, even if Jupyter has a different default kernel.
     kernel_root = cfg.RUN_DIR / "jupyter"
@@ -41,6 +62,11 @@ def main():
     os.environ["JUPYTER_PATH"] = str(kernel_root) + os.pathsep + os.environ.get("JUPYTER_PATH", "")
 
     def run_notebook(filename, output_folder):
+        try:
+            import nbformat
+            from nbclient import NotebookClient
+        except ModuleNotFoundError as error:
+            raise SystemExit(f"Missing {error.name}. Activate .venv and run: python -m pip install -r requirements.txt") from error
         print(f"{cfg.EXPERIMENT}: {filename}", flush=True)
         notebook = nbformat.read(REPOSITORY / filename, as_version=4)
         client = NotebookClient(notebook, timeout=None, kernel_name="pricecatcher",
@@ -50,11 +76,12 @@ def main():
         output_folder.mkdir(parents=True, exist_ok=True)
         nbformat.write(notebook, output_folder / filename)
 
-    if not cfg.STAGE1_COMBINED_PARQUET.exists() or not (cfg.STAGE1_DIR / "source_manifest.json").exists():
-        run_notebook("01_integrate_pricecatcher.ipynb", cfg.STAGE1_DIR / "executed")
-    for filename in ["02_data_understanding_and_quality.ipynb", "03_cleaning_and_outliers.ipynb",
-                     "04_weekly_aggregation.ipynb", "05_features_and_labels.ipynb"]:
-        run_notebook(filename, cfg.RUN_DIR / "executed")
+    if prepare_needed:
+        if not cfg.STAGE1_COMBINED_PARQUET.exists() or not (cfg.STAGE1_DIR / "source_manifest.json").exists():
+            run_notebook("01_integrate_pricecatcher.ipynb", cfg.STAGE1_DIR / "executed")
+        for filename in ["02_data_understanding_and_quality.ipynb", "03_cleaning_and_outliers.ipynb",
+                         "04_weekly_aggregation.ipynb", "05_features_and_labels.ipynb"]:
+            run_notebook(filename, cfg.RUN_DIR / "executed")
     if args.diagnostics:
         run_notebook("90_optional_source_diagnostics.ipynb", cfg.RUN_DIR / "executed")
     print(f"Completed. Outputs: {cfg.RUN_DIR}")
