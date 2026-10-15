@@ -1,6 +1,6 @@
 # Localised food price surge preparation
 
-A readable PriceCatcher pipeline for an FYP on next-week local food price surge risk. Notebooks **01–05** prepare data; modelling, train-fitted feature imputation, performance benchmarks and evaluation belong in Notebook 06. Notebook 90 is optional source evidence.
+A readable PriceCatcher pipeline for an FYP on next-week local food price surge risk. Notebooks **01–05** prepare data; **06** implements model comparison, train-fitted preprocessing, performance benchmarks and final evaluation. Notebook 90 is optional source evidence.
 
 ## Install and run
 
@@ -60,6 +60,7 @@ Only `holdout/05_modelling/` includes `test.parquet`. Every experiment has its o
 | 03 | Clean invalid/excluded records; learn bounds from this fold's training period | Daily Parquet, cleaning summary and daily geographical audit |
 | 04 | Aggregate complete Monday–Sunday scope weeks | Weekly Parquet and settings |
 | 05 | Build exact-week features, labels, protected splits and audits | Model handoff, prediction inputs and research tables |
+| 06 | Compare four model families across expanding folds; freeze model/cutoff and evaluate test | Saved pipeline, metrics, predictions and manifest |
 | 90 | Optional extreme-change, matched-shop and documented-exclusion diagnostics | Source evidence CSVs |
 
 Notebook 01 reads all 18 monthly files (January 2025–June 2026); allow internet access and sufficient memory. Lookup snapshots are reused. Monthly upstream files can be revised: preserve your integrated Parquet, manifest and lookups for final experiments. The manifest identifies the integration run but is not a guarantee that upstream prices never change. Lookup metadata is a downloaded snapshot, not a historical as-of lookup; acknowledge this limitation.
@@ -115,4 +116,38 @@ These preparation changes do not establish affordability improvements, stakehold
 python -m unittest discover -s tests -v
 ```
 
-Synthetic tests exercise 01–05, all three folds and the holdout, real Parquet handoffs, optional diagnostics, date boundaries, calendar gaps, geographical reconciliation and stale-setting rejection. A future-price perturbation checks that an early fold's item eligibility, learned bounds and training export stay unchanged. Tests need no network or real research data. Notebook outputs in Git are cleared; run the full source pipeline before reporting final counts or claiming dataset quality/model performance.
+Synthetic tests exercise 01–05, all three folds and the holdout, real Parquet handoffs, optional diagnostics, date boundaries, calendar gaps, geographical reconciliation and stale-setting rejection. A future-price perturbation checks that an early fold's item eligibility, learned bounds and training export stay unchanged. Tests need no network or real research data. Notebook 06 is provided without run results; existing preparation notebooks may contain saved outputs. Run against your own preserved source snapshot before reporting final counts or claiming model performance.
+
+## Notebook 06: model training and final evaluation
+
+After installing the updated requirements and preparing **all** experiments, open `06_model_training_and_evaluation.ipynb` in Jupyter and choose **Restart Kernel and Run All**. `prepare.py` still prepares 01–05; it deliberately does not train models. Notebook 06 reads all four experiment folders independently of the current interactive `EXPERIMENT` selection.
+
+The notebook compares two modest settings each for Logistic Regression, Random Forest, XGBoost and LightGBM. It uses a fresh training-fitted median imputer, missingness indicators and one-hot encoder for every fit, scaling numeric inputs for Logistic Regression only. Class weights come from training data; no SMOTE or combined train/validation preprocessing is used. CPU use defaults to two jobs and tree ensembles to 150 iterations/trees. The full run requires 24 expanding-fold fits plus one final fit; runtime depends on the real dataset and your hardware. Linux installs the CPU-only XGBoost distribution to avoid unnecessary GPU dependencies.
+
+Selection follows this order:
+
+1. Compare the eight candidates using mean average precision across the three 2025 folds. Report fold standard deviation and precision/recall/F1 at the fixed 0.5 score cutoff.
+2. Freeze the strongest ML candidate. Fit it on the holdout training data through December 2025.
+3. Choose its score cutoff by maximum F1 on January–March 2026 validation data; ties use the highest cutoff. This validation F1 is a selection result, not a final performance estimate.
+4. Save the fitted pipeline and selection before reading test data. Evaluate the frozen choice once on April–June 2026. Do not change settings after viewing this result and continue calling that same period an untouched test.
+
+The model is not refitted on validation after cutoff selection. Weighted models' scores are not calibrated probabilities. Average precision is `sklearn.metrics.average_precision_score`, **not trapezoidal PR-AUC**; use that exact definition in the report. Always-no-surge and current-change-rule baselines are reported on the same rows. AP without both classes and recall/F1 without observed positives remain undefined. The notebook stops if the required training/fold-validation support cannot sustain a fair comparison.
+
+The three prespecified success checks are mean fold AP above both baselines, test AP above both baselines, and test F1 above both baselines. These relative benchmarks can fail, and the notebook reports that honestly. They do not claim a universally best framework, stakeholder adoption or demonstrated affordability effects.
+
+Outputs are under `data/06_models/`:
+
+| Output | Use |
+|---|---|
+| `fold_metrics.csv`, `fold_summary.csv` | Candidate comparisons and variability |
+| `validation_metrics.csv`, `selection.json` | Validation cutoff and frozen selection |
+| `best_model.joblib` | The complete fitted preprocessing + model pipeline |
+| `test_metrics.csv`, `benchmark_checks.csv` | Final comparison with explicit success checks |
+| `test_group_metrics.csv`, `test_evaluation.png` | Food-group/geographical support, errors and PR curves |
+| `validation_predictions.parquet`, `test_predictions.parquet` | Auditable identifiers, labels, scores and decisions |
+| `latest_predictions.parquet` | Historical-snapshot predictions without outcome labels |
+| `model_manifest.json` | Candidate settings, package versions, preparation policy and input/code/model hashes |
+
+Notebook 06 saves outputs when rerun, so preserve the final run and its source/preparation artifacts. Later SHAP work should explain this saved pipeline and precompute selected explanations; anomaly detection remains separate. Those later components are not implemented by Notebook 06.
+
+The tests include a real-kernel execution of the complete notebook against synthetic prepared folds, all eight candidates, saved-model prediction reproduction, training-only imputation, unseen categories, unsupported-class metrics and validation cutoff selection. Synthetic scores do not represent FYP performance: execute the real pipeline before reporting findings.
