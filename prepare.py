@@ -17,17 +17,20 @@ def main():
     parser.add_argument("--experiment", choices=EXPERIMENTS + ["all"], default="holdout")
     parser.add_argument("--diagnostics", action="store_true", help="Also run optional Notebook 90")
     parser.add_argument("--refresh", action="store_true", help="Regenerate preparation for a study without a saved model")
+    parser.add_argument("--model-mode", choices=["train", "reuse"], help="Also execute 06 after preparation; reuse never regenerates inputs")
     args = parser.parse_args()
     if args.experiment == "all":
         # Separate processes keep settings and notebook kernels isolated between folds.
-        for experiment in EXPERIMENTS:
+        for experiment in ([] if args.model_mode == "reuse" else EXPERIMENTS):
             command = [sys.executable, str(Path(__file__).resolve()), "--experiment", experiment]
             if args.diagnostics:
                 command.append("--diagnostics")
             if args.refresh:
                 command.append("--refresh")
             subprocess.run(command, check=True, cwd=REPOSITORY)
-        return
+        if args.model_mode is None:
+            return
+        args.experiment = "holdout"
 
     os.environ["PRICECATCHER_EXPERIMENT"] = args.experiment
     import pricecatcher_config as cfg
@@ -44,10 +47,10 @@ def main():
         manifest_path = cfg.STAGE1_DIR / "source_manifest.json"
         if manifest_path.exists():
             complete = complete and settings["preparation"]["source_manifest_sha256"] == hashlib.sha256(manifest_path.read_bytes()).hexdigest()
-    prepare_needed = args.refresh or not complete
+    prepare_needed = (args.refresh or not complete) and args.model_mode != "reuse"
     if prepare_needed and (cfg.PROJECT_ROOT / "06_models" / "best_model.joblib").exists():
         raise SystemExit("A completed model exists. Restore its original prepared files instead of regenerating them. Use a separate PRICECATCHER_DATA_DIR for a new study.")
-    if not prepare_needed and not args.diagnostics:
+    if not prepare_needed and not args.diagnostics and args.model_mode is None:
         print(f"{cfg.EXPERIMENT}: existing preparation reused at {cfg.RUN_DIR}")
         return
 
@@ -69,6 +72,10 @@ def main():
             raise SystemExit(f"Missing {error.name}. Activate .venv and run: python -m pip install -r requirements.txt") from error
         print(f"{cfg.EXPERIMENT}: {filename}", flush=True)
         notebook = nbformat.read(REPOSITORY / filename, as_version=4)
+        if filename.startswith("06_"):
+            for cell in notebook.cells:
+                if cell.cell_type == "code":
+                    cell.source = cell.source.replace('RUN_MODE = "reuse"', f'RUN_MODE = "{args.model_mode}"')
         client = NotebookClient(notebook, timeout=None, kernel_name="pricecatcher",
                                 resources={"metadata": {"path": str(REPOSITORY)}})
         # Each notebook starts with a fresh kernel. A failed cell stops the run.
@@ -84,6 +91,8 @@ def main():
             run_notebook(filename, cfg.RUN_DIR / "executed")
     if args.diagnostics:
         run_notebook("90_optional_source_diagnostics.ipynb", cfg.RUN_DIR / "executed")
+    if args.model_mode:
+        run_notebook("06_model_training_and_evaluation.ipynb", cfg.PROJECT_ROOT / "06_models" / "supplementary" / "executed")
     print(f"Completed. Outputs: {cfg.RUN_DIR}")
 
 

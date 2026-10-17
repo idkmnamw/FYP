@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import subprocess
 import unittest
 from unittest.mock import patch
 
@@ -20,7 +21,7 @@ _namespace = {}
 for _cell in nbformat.read(ROOT / "06_model_training_and_evaluation.ipynb", as_version=4).cells:
     if _cell.cell_type == "code" and _cell.source.startswith("# Shared modelling calculations"):
         exec(compile(_cell.source, "notebook-modelling-functions", "exec"), _namespace)
-for _name in ["build_pipeline", "choose_cutoff", "evaluate", "model_inputs", "grouped_metrics", "check_frame", "food_group_scores", "verify_saved_run"]:
+for _name in ["build_pipeline", "choose_cutoff", "evaluate", "model_inputs", "grouped_metrics", "check_frame", "food_group_scores", "verify_saved_run", "source_snapshot_status"]:
     globals()[_name] = _namespace[_name]
 
 
@@ -70,6 +71,26 @@ class ModellingTests(unittest.TestCase):
         future["surge_label"] = 0
         np.testing.assert_allclose(food_group_scores(training, future), expected)
 
+    def test_snapshot_identity_ignores_manifest_timestamps_but_not_content(self):
+        experiments = {
+            "fold_1": {"preparation": {"source_manifest_sha256": "a" * 64, "source_snapshot_sha256": "same-content"}},
+            "holdout": {"preparation": {"source_manifest_sha256": "b" * 64, "source_snapshot_sha256": "same-content"}},
+        }
+        self.assertEqual(source_snapshot_status(experiments, "train")["status"], "matching_content_snapshot")
+        experiments["fold_1"]["preparation"]["source_snapshot_sha256"] = "different-content"
+        with self.assertRaisesRegex(ValueError, "not consistently identified"):
+            source_snapshot_status(experiments, "train")
+        self.assertEqual(source_snapshot_status(experiments, "reuse")["status"], "historical_source_consistency_unresolved")
+
+    def test_legacy_snapshot_mismatch_is_not_silently_declared_equivalent(self):
+        experiments = {
+            "fold_1": {"preparation": {"source_manifest_sha256": "a" * 64}},
+            "holdout": {"preparation": {"source_manifest_sha256": "b" * 64}},
+        }
+        with self.assertRaises(ValueError):
+            source_snapshot_status(experiments, "train")
+        self.assertEqual(source_snapshot_status(experiments, "reuse")["status"], "historical_source_consistency_unresolved")
+
     def test_notebook_runs_and_saved_pipeline_reproduces_test_scores(self):
         fixtures.PreparationTests.setUpClass()
         try:
@@ -118,13 +139,10 @@ class ModellingTests(unittest.TestCase):
             self.assertEqual(source_quality.rows.sum(), len(validation))
             import hashlib
             before = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in outputs.iterdir() if p.is_file()}
-            reuse_notebook = nbformat.read(ROOT / "06_model_training_and_evaluation.ipynb", as_version=4)
-            with patch.dict(os.environ, {"JUPYTER_PATH": str(kernel_root) + os.pathsep + os.environ.get("JUPYTER_PATH", "")}):
-                NotebookClient(reuse_notebook, timeout=240, kernel_name="pricecatcher-test",
-                    resources={"metadata": {"path": str(ROOT)}}).execute()
+            subprocess.run([sys.executable, str(ROOT / "prepare.py"), "--experiment", "all", "--model-mode", "reuse"],
+                           check=True, capture_output=True, text=True)
             after = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in outputs.iterdir() if p.is_file()}
             self.assertEqual(before, after)
-            import subprocess
             runner = subprocess.run([sys.executable, str(ROOT / "prepare.py"), "--experiment", "all"],
                                     check=True, capture_output=True, text=True)
             self.assertEqual(runner.stdout.count("existing preparation reused"), 4)
@@ -143,7 +161,38 @@ class ModellingTests(unittest.TestCase):
                     verify_saved_run(outputs, cfg.PROJECT_ROOT)
             finally:
                 (outputs / "selection.json").write_text(original_selection)
+            missing = cfg.STAGE5_DIR / "train.parquet"
+            temporary = missing.with_suffix(".temporarily-missing")
+            missing.rename(temporary)
+            try:
+                with self.assertRaisesRegex(FileNotFoundError, "Restore the original prepared folder"):
+                    verify_saved_run(outputs, cfg.PROJECT_ROOT)
+            finally:
+                temporary.rename(missing)
             self.assertNotIn("surge_label", pd.read_parquet(outputs / "latest_predictions.parquet"))
+            # Emulate a completed legacy study whose differing integration manifests were frozen at training time.
+            # This is a synthetic fixture only: no real recorded hashes are rewritten.
+            legacy_manifest = json.loads((outputs / "model_manifest.json").read_text())
+            legacy_manifest.pop("source_provenance", None)
+            for index, name in enumerate(["fold_1", "fold_2", "fold_3", "holdout"]):
+                experiment_root = cfg.PROJECT_ROOT / "experiments" / name
+                settings_path = experiment_root / "05_modelling" / "experiment_settings.json"
+                legacy_settings = json.loads(settings_path.read_text())
+                legacy_settings["preparation"].pop("source_snapshot_sha256", None)
+                legacy_settings["preparation"]["source_manifest_sha256"] = str(index) * 64
+                settings_path.write_text(json.dumps(legacy_settings))
+                weekly_path = experiment_root / "04_weekly" / "preparation_settings.json"
+                weekly_path.write_text(json.dumps(legacy_settings["preparation"]))
+                legacy_manifest["input_sha256"][f"{name}/experiment_settings.json"] = hashlib.sha256(settings_path.read_bytes()).hexdigest()
+                if name == "holdout":
+                    legacy_manifest["holdout_preparation"] = legacy_settings["preparation"]
+            (outputs / "model_manifest.json").write_text(json.dumps(legacy_manifest))
+            frozen_files = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in outputs.iterdir() if p.is_file()}
+            subprocess.run([sys.executable, str(ROOT / "prepare.py"), "--model-mode", "reuse"],
+                           check=True, capture_output=True, text=True)
+            self.assertEqual(frozen_files, {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in outputs.iterdir() if p.is_file()})
+            status = json.loads((outputs / "supplementary" / "source_provenance.json").read_text())
+            self.assertEqual(status["status"], "historical_source_consistency_unresolved")
             broken = test.copy()
             broken.loc[broken.index[0], "next_week_end"] = pd.Timestamp("2027-01-01")
             with self.assertRaises(ValueError):

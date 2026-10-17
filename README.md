@@ -24,9 +24,15 @@ source .venv/bin/activate
 python -m jupyter lab
 ```
 
-Open **06_model_training_and_evaluation.ipynb**. Keep `RUN_MODE = "reuse"` and choose **Restart Kernel and Run All**. It:
+Open **06_model_training_and_evaluation.ipynb**. Keep `RUN_MODE = "reuse"` and choose **Restart Kernel and Run All**, or execute it from the same terminal:
 
-1. Checks the saved model, selection and prepared-input hashes.
+```bash
+python prepare.py --model-mode reuse
+```
+
+This command does not regenerate prepared inputs. It:
+
+1. Checks the saved model, selection and prepared-input hashes **before** checking legacy source-manifest consistency.
 2. Loads the original model/cutoff and displays the main results without fitting or overwriting them.
 3. Writes only the new supplementary results under `data/06_models/supplementary/`.
 
@@ -46,7 +52,13 @@ Run 01–05 manually in order if you prefer; select the experiment in `pricecatc
 
 The runner reuses complete preparation by default, so repeating the command does not regenerate prepared files. `--refresh` regenerates a study without a saved model. It refuses to overwrite preparation when `06_models/best_model.joblib` exists. For a new study, set a separate `PRICECATCHER_DATA_DIR` before starting Python/Jupyter; do not reuse the exposed test period as a fresh final test.
 
-For an initial model experiment without existing saved artifacts, set `RUN_MODE = "train"` in 06 and run all cells. Training refuses to overwrite an existing model. Keep the first completed run and its artifacts.
+For an initial model experiment without existing saved artifacts, set `RUN_MODE = "train"` in 06 and run all cells. To run preparation and modelling together in a **separate** reproduction folder:
+
+```bash
+PRICECATCHER_DATA_DIR="$PWD/data_reproduction" python prepare.py --experiment all --model-mode train
+```
+
+On Windows set the environment variable using your shell's syntax. This reproduces the existing protocol; the already exposed test period does not become a new independent test. The executed Notebook 06 is saved inside its supplementary/executed folder. Training refuses to overwrite an existing model. Keep the first completed run and its artifacts.
 
 ## Notebook responsibilities
 
@@ -96,6 +108,10 @@ Unsupported pairs remain unlabelled. The main rule requires two records and one 
 
 Item screening, statistical bounds, model imputation, encoding and weights use each training period only. Full scope does not guarantee sufficient history everywhere. Use daily geographical attrition in 03, state/district eligibility tables in 05 and `series_coverage.csv` to report usable history and excluded places. Weekly exclusion reasons are sequential, not independent counts; final outcomes outside scope are structural rather than local missing-data failures. Completely unobserved places/weeks cannot be counted from observed records alone.
 
+New source manifests record SHA-256 hashes of the integrated data and lookup files, combined into a content-based `source_snapshot_sha256`. Changing an integration timestamp alone does not change this content identity. New training checks content IDs when available and rejects inconsistent sources. The exact manifest hash is still retained for provenance.
+
+In reuse mode, the original saved-model/input checks always run first. A legacy run with differing manifest hashes may then be inspected with `historical_source_consistency_unresolved` recorded in `supplementary/source_provenance.json`. This is not proof of identical source data or a retrospective repair of the original evaluation. Changed frozen inputs still stop execution; restore their original matching files rather than editing stored hashes.
+
 Statistical flags are retained by default. The holdout training period excludes six documented suspected tenfold-price records without inventing corrections. Early folds retain these retrospective exceptions because their review dates were not recorded. Other suspicious prices remain uncertainty. Lookup metadata is a downloaded snapshot, and upstream monthly prices may be revised; preserve your integrated source/lookup files and manifest.
 
 ## Main and supplementary evidence in 06
@@ -121,3 +137,9 @@ python -m unittest discover -s tests -v
 Tests use synthetic sources and real Parquet/Jupyter execution. They cover expanding-fold preparation, future-price independence, calendar gaps, training-only imputation, unseen categories, supplementary baseline fitting, saved-model prediction reproduction, hash checks and preservation of original artifacts during reuse. These tests do not establish real-data accuracy or robustness.
 
 Update the report's older 1,950-record removal policy, boundary-week description and screenshots to match the actual run. Report baseline comparisons, false alerts, missed surges, food-group support, temporal variability and unresolved source uncertainty. Stakeholder adoption, affordability effects and omitted external drivers need appropriately limited claims; they are not proven by a good classification score.
+
+## Cloud verification status — 17 October 2026
+
+The cloud Python environment was restored and current dependencies were installed. Synthetic tests and real Jupyter executions are covered by the test suite, including unchanged frozen outputs and legacy snapshot handling. The attempted **full-source** run stopped at the first data download with `CONNECT tunnel failed: 403 Forbidden`: the cloud allowlist did not include `storage.data.gov.my`.
+
+A cloud configuration draft adds that official host and saves installation/startup instructions. It must be reviewed, saved and published in Environment Settings before the real download can run. This changes cloud access, not the repository's data or model. No fresh full-data metrics are claimed while that blocker remains. See `reports/verification_status.md` for the distinction between historical results, synthetic verification and the pending real-data reproduction.
