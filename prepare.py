@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+from importlib import reload, util
 import shutil
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -22,6 +23,12 @@ def main():
     parser.add_argument("--rerun-all", action="store_true", help="Execute all six notebooks in a new run folder, using cached source data when available")
     parser.add_argument("--model-mode", choices=["auto", "train", "reuse"], help="Run 06; auto reuses a model or creates a separate reproduction")
     args = parser.parse_args()
+    missing = [name for name in ["nbformat", "nbclient", "ipykernel"] if util.find_spec(name) is None]
+    if missing:
+        raise SystemExit(
+            f"Missing {', '.join(missing)} in {sys.executable}.\n"
+            f'Install using this interpreter: "{sys.executable}" -m pip install -r "{REPOSITORY / "requirements.txt"}"'
+        )
     if args.rerun_all:
         if args.refresh or args.model_mode is not None:
             parser.error("Use --rerun-all by itself; it handles preparation and model execution.")
@@ -59,6 +66,12 @@ def main():
 
     os.environ["PRICECATCHER_EXPERIMENT"] = args.experiment
     import pricecatcher_config as cfg
+    if model_only:
+        selected = cfg.find_run_folder(cfg.PROJECT_ROOT)
+        if selected != cfg.PROJECT_ROOT:
+            os.environ["PRICECATCHER_DATA_DIR"] = str(selected)
+            cfg = reload(cfg)
+            print(f"Using latest prepared/saved run: {selected}", flush=True)
 
     # Frozen-model reuse verifies prepared inputs in 06. New preparation also
     # checks actual source bytes, even when the runner can reuse prepared files.
@@ -107,7 +120,8 @@ def main():
         if filename.startswith("06_"):
             for cell in notebook.cells:
                 if cell.cell_type == "code":
-                    cell.source = "\n".join(f'RUN_MODE = "{args.model_mode}"' if line.startswith("RUN_MODE = ") else line
+                    cell.source = "\n".join(f'RUN_MODE = "{args.model_mode}"' if line.startswith("RUN_MODE = ") else
+                                             "DATA_FOLDER = None" if line.startswith("DATA_FOLDER = ") else line
                                              for line in cell.source.splitlines())
         client = NotebookClient(notebook, timeout=None, kernel_name="pricecatcher",
                                 resources={"metadata": {"path": str(REPOSITORY)}})

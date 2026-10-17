@@ -12,6 +12,8 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
+If Notebook 06 reports missing `nbformat`, its kernel is using a Python without the project packages. In that notebook, run `%pip install -r requirements.txt` in a temporary cell, then Restart Kernel → Run All. On macOS, if LightGBM reports missing `libomp.dylib`, run `brew install libomp` in Terminal.
+
 For Jupyter, run `python -m jupyter lab` and select this environment as the kernel. Restore an older saved model using the package versions in its own `model_manifest.json`.
 
 ## Rerun the complete workflow
@@ -39,9 +41,13 @@ Use the exact run folder printed by the command:
 PRICECATCHER_DATA_DIR="/path/to/FYP/data/runs/run_<timestamp>" python prepare.py --model-mode auto
 ```
 
-For original files stored directly under `data/`, use `python prepare.py --model-mode auto`. Notebook 06's default `RUN_MODE = "auto"` also reuses an existing local model, or trains into a separate reproduction folder if no model/manifest exists. Missing or outdated fold preparation can be generated from local integrated data when no frozen model protects it.
+For the latest local run, use `python prepare.py --model-mode auto`, or open Notebook 06 with `RUN_MODE = "auto"` and `DATA_FOLDER = None`, then Restart Kernel → Run All. It finds the latest local run under `data/runs/` by folder date and prints the selected path; it never selects by performance. If there are no run folders, it uses `data/`. To inspect a particular original or reproduction run, set `DATA_FOLDER` to its absolute folder path in the notebook. The selected Python executable is also printed to help identify kernel/environment problems.
+
+If no model/manifest exists, auto trains into a separate reproduction folder. Missing, outdated or incomplete fold preparation can be generated from local integrated data when no frozen model protects it. Model reuse uses the verified saved preparation policies and dates rather than today's editable defaults. It checks all frozen inputs and lists missing files; missing essential fold/validation result files are reported together.
 
 A partial saved run is never silently replaced. Reuse verifies the model, selection and prepared-input hashes. It may recover holdout metadata only when the entire reconstructed settings file has the exact original recorded hash and every other frozen input passes; the changed JSON is backed up. Model/Parquet files and expected hashes are preserved. A pending evaluation can resume with the frozen model/cutoff. Direct runs of 01–05 stop when they would replace a frozen run's inputs; use `--rerun-all` instead.
+
+The supplementary source-quality audit is optional. Missing or mismatched weekly audit data is recorded as **unavailable**, with the reason; stale supplementary audit tables are removed. Verified main results can still be viewed, and unavailable never means the audit passed. Model/input mismatches and incompatible saved experiments remain blocking errors. Boosting libraries are imported only when their models are needed; training the full comparison still requires all declared dependencies.
 
 ## What each notebook does
 

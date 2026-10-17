@@ -94,6 +94,21 @@ STAGE4_WEEKLY_PARQUET = STAGE4_DIR / "weekly_prices.parquet"
 MODEL_DIRS = (PROJECT_ROOT / "06_models", PROJECT_ROOT / "06_models_reproduction")
 
 
+def find_run_folder(base):
+    """Find the latest local run by folder date, never by model score."""
+    for run in sorted((base / "runs").glob("run_*"), reverse=True):
+        if not run.is_dir():
+            continue
+        if any((run / model / filename).is_file()
+               for model in ["06_models", "06_models_reproduction"]
+               for filename in ["best_model.joblib", "model_manifest.json"]):
+            return run
+        source = run / "01_integrated"
+        if (source / "integrated_prices.parquet").is_file() and (source / "source_manifest.json").is_file():
+            return run
+    return base
+
+
 def surge_mask(change_pct, threshold_pct, tolerance_pct=LABEL_TOLERANCE_PCT):
     """Count an exact threshold rise despite tiny floating-point rounding errors."""
     return (change_pct >= threshold_pct) | np.isclose(
