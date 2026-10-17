@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import sys
 import subprocess
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -20,11 +21,34 @@ _namespace = {}
 for _cell in nbformat.read(ROOT / "06_model_training_and_evaluation.ipynb", as_version=4).cells:
     if _cell.cell_type == "code" and _cell.source.startswith("# Shared modelling calculations"):
         exec(compile(_cell.source, "notebook-modelling-functions", "exec"), _namespace)
-for _name in ["build_pipeline", "choose_cutoff", "evaluate", "model_inputs", "grouped_metrics", "check_frame", "food_group_scores", "verify_saved_run", "source_snapshot_status"]:
+for _name in ["build_pipeline", "choose_cutoff", "evaluate", "model_inputs", "grouped_metrics", "check_frame", "food_group_scores", "verify_saved_run", "source_snapshot_status", "save_frozen_model"]:
     globals()[_name] = _namespace[_name]
 
 
 class ModellingTests(unittest.TestCase):
+    def test_checkpoint_failure_does_not_activate_an_unrecoverable_model(self):
+        with tempfile.TemporaryDirectory() as folder:
+            output = Path(folder)
+            # Fail after writing selection, while writing the manifest.
+            original_write = _namespace["write_json"]
+
+            def fail_manifest(path, value):
+                if path.name == "model_manifest.json":
+                    raise OSError("simulated interrupted checkpoint")
+                original_write(path, value)
+
+            with patch.dict(_namespace, {"write_json": fail_manifest}):
+                with self.assertRaisesRegex(OSError, "interrupted checkpoint"):
+                    save_frozen_model({"fitted": True}, {"score_cutoff": .6}, {}, output)
+            self.assertFalse((output / "best_model.joblib").exists())
+            # A retry before test access is allowed because no model was activated.
+            save_frozen_model({"fitted": True}, {"score_cutoff": .6}, {"input_sha256": {}}, output)
+            manifest, selection = verify_saved_run(output, output)
+            self.assertEqual(manifest["run_status"], "evaluation_pending")
+            self.assertEqual(selection["score_cutoff"], .6)
+            with self.assertRaisesRegex(ValueError, "frozen model already exists"):
+                save_frozen_model({}, selection, {}, output)
+
     def test_training_only_imputation_and_unseen_categories(self):
         settings = {"feature_columns": ["price", "empty", "item_code"],
                     "numeric_features": ["price", "empty"], "categorical_features": ["item_code"]}
@@ -126,17 +150,72 @@ class ModellingTests(unittest.TestCase):
             self.assertEqual(len(manifest["input_sha256"]), 14)
             self.assertEqual(len(manifest["code_sha256"]), 3)
             self.assertEqual(len(manifest["model_sha256"]), 64)
+            self.assertEqual(manifest["run_status"], "completed")
             self.assertTrue((outputs / "test_evaluation.png").exists())
             self.assertTrue((outputs / "supplementary" / "food_group_baseline.csv").exists())
             source_quality = pd.read_csv(outputs / "supplementary" / "validation_source_quality.csv")
             validation = pd.read_parquet(cfg.STAGE5_DIR / "validation.parquet")
             self.assertEqual(source_quality.rows.sum(), len(validation))
             import hashlib
+            # Emulate loss of evaluation exports after a frozen checkpoint.
+            # Only this synthetic run's status is changed; real runs are untouched.
+            frozen_model = (outputs / "best_model.joblib").read_bytes()
+            frozen_selection = (outputs / "selection.json").read_bytes()
+            manifest["run_status"] = "evaluation_pending"
+            (outputs / "model_manifest.json").write_text(json.dumps(manifest))
+            (outputs / "test_predictions.parquet").unlink()
+            (outputs / "test_metrics.csv").unlink()
+            subprocess.run([sys.executable, str(ROOT / "prepare.py"), "--model-mode", "reuse"],
+                           check=True, capture_output=True, text=True)
+            self.assertEqual((outputs / "best_model.joblib").read_bytes(), frozen_model)
+            self.assertEqual((outputs / "selection.json").read_bytes(), frozen_selection)
+            self.assertEqual(json.loads((outputs / "model_manifest.json").read_text())["run_status"], "completed")
+            pd.testing.assert_frame_equal(predictions, pd.read_parquet(outputs / "test_predictions.parquet"))
+            self.assertTrue((outputs / "test_metrics.csv").exists())
             before = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in outputs.iterdir() if p.is_file()}
             subprocess.run([sys.executable, str(ROOT / "prepare.py"), "--experiment", "all", "--model-mode", "reuse"],
                            check=True, capture_output=True, text=True)
             after = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in outputs.iterdir() if p.is_file()}
             self.assertEqual(before, after)
+            # Restoring legacy model settings can leave newer weekly provenance.
+            # Accept provenance differences only with matching policies/prices/labels.
+            weekly_settings_path = cfg.STAGE4_DIR / "preparation_settings.json"
+            original_weekly_settings = weekly_settings_path.read_bytes()
+            audit_settings = json.loads(original_weekly_settings)
+            audit_settings["source_manifest_sha256"] = "newer-audit-manifest"
+            audit_settings["source_snapshot_sha256"] = "newer-audit-snapshot"
+            weekly_settings_path.write_text(json.dumps(audit_settings))
+            try:
+                subprocess.run([sys.executable, str(ROOT / "prepare.py"), "--model-mode", "reuse"],
+                               check=True, capture_output=True, text=True)
+                audit = json.loads((outputs / "supplementary" / "analysis_settings.json").read_text())
+                self.assertFalse(audit["weekly_audit_provenance"]["metadata_match"])
+                self.assertEqual(before, {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in outputs.iterdir() if p.is_file()})
+                audit_settings["minimum_records"] += 1
+                weekly_settings_path.write_text(json.dumps(audit_settings))
+                rejected = subprocess.run([sys.executable, str(ROOT / "prepare.py"), "--model-mode", "reuse"],
+                                          capture_output=True, text=True)
+                self.assertNotEqual(rejected.returncode, 0)
+                self.assertIn("Weekly audit policies differ", rejected.stderr)
+            finally:
+                weekly_settings_path.write_bytes(original_weekly_settings)
+            weekly_path = cfg.STAGE4_WEEKLY_PARQUET
+            original_weekly = weekly_path.read_bytes()
+            changed_weekly = pd.read_parquet(weekly_path)
+            row = validation.iloc[0]
+            pair = changed_weekly.week_start.eq(row.week_start)
+            for key in cfg.GROUP_KEYS:
+                pair &= changed_weekly[key].eq(row[key])
+            self.assertEqual(int(pair.sum()), 1)
+            changed_weekly.loc[pair, "weekly_median_price"] *= 1.1
+            changed_weekly.to_parquet(weekly_path, index=False)
+            try:
+                rejected = subprocess.run([sys.executable, str(ROOT / "prepare.py"), "--model-mode", "reuse"],
+                                          capture_output=True, text=True)
+                self.assertNotEqual(rejected.returncode, 0)
+                self.assertIn("Weekly audit prices differ", rejected.stderr)
+            finally:
+                weekly_path.write_bytes(original_weekly)
             runner = subprocess.run([sys.executable, str(ROOT / "prepare.py"), "--experiment", "all"],
                                     check=True, capture_output=True, text=True)
             self.assertEqual(runner.stdout.count("existing preparation reused"), 4)

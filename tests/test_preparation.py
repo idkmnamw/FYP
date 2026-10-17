@@ -5,6 +5,7 @@ Run: python -m unittest discover -s tests -v
 import contextlib
 import importlib
 import io
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -158,16 +159,87 @@ class PreparationTests(unittest.TestCase):
         bounds = json.loads((cfg.STAGE3_DIR / "cleaning_summary.json").read_text())["training_price_bounds"]
         training = pd.read_parquet(cfg.STAGE5_DIR / "train.parquet")
         original = pd.read_parquet(cfg.STAGE1_COMBINED_PARQUET)
+        original_bytes = cfg.STAGE1_COMBINED_PARQUET.read_bytes()
+        manifest_path = cfg.STAGE1_DIR / "source_manifest.json"
+        original_manifest = manifest_path.read_text()
         changed = original.copy()
         changed.loc[changed.date.gt(pd.Timestamp(cfg.TRAIN_END_DATE)), "price"] *= 17
         changed.to_parquet(cfg.STAGE1_COMBINED_PARQUET, index=False)
         try:
+            # Deliberately create a NEW synthetic source snapshot for this test.
+            # Production code must reject a changed file with the old manifest.
+            manifest = json.loads(original_manifest)
+            relative = str(cfg.STAGE1_COMBINED_PARQUET.relative_to(cfg.STAGE1_DIR))
+            manifest["source_files_sha256"][relative] = hashlib.sha256(cfg.STAGE1_COMBINED_PARQUET.read_bytes()).hexdigest()
+            manifest["source_snapshot_sha256"] = hashlib.sha256(
+                json.dumps(manifest["source_files_sha256"], sort_keys=True).encode()).hexdigest()
+            manifest_path.write_text(json.dumps(manifest))
             cfg = self.prepare("fold_1")
             pd.testing.assert_frame_equal(coverage, pd.read_csv(cfg.STAGE2_ITEM_COVERAGE_CSV))
             self.assertEqual(bounds, json.loads((cfg.STAGE3_DIR / "cleaning_summary.json").read_text())["training_price_bounds"])
             pd.testing.assert_frame_equal(training, pd.read_parquet(cfg.STAGE5_DIR / "train.parquet"))
         finally:
-            original.to_parquet(cfg.STAGE1_COMBINED_PARQUET, index=False)
+            cfg.STAGE1_COMBINED_PARQUET.write_bytes(original_bytes)
+            manifest_path.write_text(original_manifest)
+
+    def test_changed_source_files_are_rejected_before_preparation(self):
+        cfg = self.prepare("fold_1")
+        for path in [cfg.STAGE1_COMBINED_PARQUET, cfg.LOOKUP_DIR / "lookup_item.parquet"]:
+            with self.subTest(source=path.name):
+                original = path.read_bytes()
+                path.write_bytes(original + b"changed")
+                try:
+                    for notebook in ["02_data_understanding_and_quality.ipynb", "03_cleaning_and_outliers.ipynb"]:
+                        with self.assertRaisesRegex(ValueError, "Source file changed"):
+                            self.run_notebook(notebook)
+                    # A complete prepared folder must not bypass the check either.
+                    import subprocess
+                    result = subprocess.run([sys.executable, str(ROOT / "prepare.py"), "--experiment", "fold_1"],
+                                            capture_output=True, text=True)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn("Source file changed", result.stderr)
+                finally:
+                    path.write_bytes(original)
+
+    def test_source_snapshot_id_must_match_recorded_file_hashes(self):
+        cfg = self.prepare("fold_1")
+        path = cfg.STAGE1_DIR / "source_manifest.json"
+        original = path.read_text()
+        changed = json.loads(original)
+        changed["source_snapshot_sha256"] = "incorrect"
+        path.write_text(json.dumps(changed))
+        try:
+            with self.assertRaisesRegex(ValueError, "snapshot ID disagrees"):
+                cfg.verify_source_snapshot()
+        finally:
+            path.write_text(original)
+
+    def test_direct_notebook_runs_preserve_frozen_model_inputs(self):
+        cfg = self.prepare("fold_1")
+        paths = [cfg.STAGE1_COMBINED_PARQUET, cfg.STAGE2_ITEM_COVERAGE_CSV,
+                 cfg.STAGE3_MODEL_READY_PARQUET, cfg.STAGE4_WEEKLY_PARQUET,
+                 cfg.STAGE5_DIR / "experiment_settings.json", cfg.STAGE5_DIR / "train.parquet"]
+        before = {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
+        model = cfg.PROJECT_ROOT / "06_models" / "best_model.joblib"
+        model.parent.mkdir(exist_ok=True)
+        model.write_bytes(b"synthetic frozen-model marker")
+        try:
+            for name in ["01_integrate_pricecatcher.ipynb", "02_data_understanding_and_quality.ipynb",
+                         "03_cleaning_and_outliers.ipynb", "04_weekly_aggregation.ipynb",
+                         "05_features_and_labels.ipynb"]:
+                with self.subTest(notebook=name), self.assertRaisesRegex(ValueError, "frozen model exists"):
+                    self.run_notebook(name)
+            self.assertEqual(before, {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in paths})
+        finally:
+            model.unlink()
+
+    def test_weekly_coverage_describes_exported_complete_weeks(self):
+        self.prepare("fold_1")
+        namespace = self.run_notebook("04_weekly_aggregation.ipynb")
+        self.assertEqual(namespace["coverage"].weeks_present.sum(), len(namespace["complete"]))
+        self.assertTrue(namespace["weekly"].partial_scope_week.any())
+        first = namespace["complete"].groupby(self.cfg.GROUP_KEYS, sort=False).head(1)
+        self.assertTrue(first.gap_days_from_previous.isna().all())
 
     def test_stale_stage_settings_are_rejected(self):
         cfg = self.prepare("fold_1")

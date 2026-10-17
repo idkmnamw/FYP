@@ -1,6 +1,8 @@
 """Shared settings for Notebooks 01–06. Keep this file beside the notebooks."""
 from pathlib import Path
 from datetime import date
+import hashlib
+import json
 import os
 
 # Outputs stay beside this file by default. Set PRICECATCHER_DATA_DIR to override.
@@ -86,6 +88,35 @@ STAGE1_COMBINED_PARQUET = STAGE1_DIR / "integrated_prices.parquet"
 STAGE2_ITEM_COVERAGE_CSV = STAGE2_DIR / "training_item_coverage.csv"
 STAGE3_MODEL_READY_PARQUET = STAGE3_DIR / "daily_prices.parquet"
 STAGE4_WEEKLY_PARQUET = STAGE4_DIR / "weekly_prices.parquet"
+
+
+def protect_frozen_preparation():
+    """Keep direct notebook runs from replacing inputs of an existing model."""
+    if (PROJECT_ROOT / "06_models" / "best_model.joblib").exists():
+        raise ValueError("A frozen model exists. Use 06 in reuse mode. Run 01–05 only in a separate PRICECATCHER_DATA_DIR for a new study.")
+
+
+def verify_source_snapshot():
+    """Check the actual integrated data/lookups before preparing a new experiment."""
+    manifest = json.loads((STAGE1_DIR / "source_manifest.json").read_text())
+    files = manifest.get("source_files_sha256", {})
+    required = {str(path.relative_to(STAGE1_DIR)) for path in [
+        STAGE1_COMBINED_PARQUET, LOOKUP_DIR / "lookup_item.parquet",
+        LOOKUP_DIR / "lookup_premise.parquet"]}
+    if set(files) != required:
+        raise ValueError("Source file hashes are missing/incomplete. Restore the matching source snapshot, or run 01 for a new study.")
+    for relative_path, expected_hash in files.items():
+        path = STAGE1_DIR / relative_path
+        if not path.exists():
+            raise FileNotFoundError(f"Source file missing: {relative_path}. Restore the matching snapshot.")
+        with path.open("rb") as handle:
+            actual_hash = hashlib.file_digest(handle, "sha256").hexdigest()
+        if actual_hash != expected_hash:
+            raise ValueError(f"Source file changed: {relative_path}. Restore the matching snapshot, or run 01 in a separate folder for a new study.")
+    snapshot = hashlib.sha256(json.dumps(files, sort_keys=True).encode()).hexdigest()
+    if snapshot != manifest.get("source_snapshot_sha256"):
+        raise ValueError("Source snapshot ID disagrees with its file hashes. Restore the original manifest.")
+    return manifest
 
 # Saved at every stage; changing settings requires rerunning 02–05 for this experiment.
 PREPARATION_SETTINGS = {

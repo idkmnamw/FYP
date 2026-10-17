@@ -1,78 +1,71 @@
 # PriceCatcher FYP
 
-Notebooks **01–06** prepare local weekly prices, compare surge classifiers and report their limitations. The code stays in the notebooks. There are only **two supporting Python files at the top level**:
+Notebooks 01–06 prepare weekly local prices, compare next-week surge classifiers and report their limitations. Code stays in the notebooks, with only two supporting Python files.
 
 | File/folder | Purpose |
 |---|---|
-| `pricecatcher_config.py` | Shared dates, item scope, coverage rules and output paths |
-| `prepare.py` | Optional runner for 01–05; not needed for interactive notebook use |
-| `requirements.txt` | Dependencies |
-| `tests/` | Automated synthetic-data checks; not application code |
-| `reports/` | Original result snapshot, qualified interpretation and verification environment |
-| `data/` | Local source snapshots, prepared folds, saved model and results; excluded from Git |
+| `01_…ipynb`–`06_…ipynb` | Main preparation and modelling workflow |
+| `90_optional_source_diagnostics.ipynb` | Optional training-data review and label sensitivity |
+| `pricecatcher_config.py` | Dates, item scope, coverage rules, paths and source verification |
+| `prepare.py` | Optional notebook runner, including model training/reuse |
+| `requirements.txt` | Installation dependencies |
+| `tests/` | Synthetic regression and fresh-kernel execution checks |
+| `reports/` | Historical results, current verification status and tested environment |
+| `data/` | Generated local artifacts; excluded from Git |
 
-The former `pricecatcher_features.py` and `pricecatcher_modelling.py` are no longer needed. Their necessary functions are inside the relevant notebooks. Notebook 90 remains optional source-review evidence.
+Repository notebooks are source copies with saved outputs cleared. The runner saves executed copies under `data/`; historical real-data results remain in `reports/completed_main_experiment.md` and Git history. Synthetic outputs are never presented as FYP performance.
 
-## Your completed experiment: use this workflow
+## Install
 
-Keep your original `data/` folder and Python environment. Your trained model and Parquet files are local artifacts, not included in the GitHub notebook outputs. Use the package versions recorded in `data/06_models/model_manifest.json` when restoring an environment.
-
-On your Mac, from the repository folder:
-
-```bash
-source .venv/bin/activate
-python -m jupyter lab
-```
-
-Open **06_model_training_and_evaluation.ipynb**. Keep `RUN_MODE = "reuse"` and choose **Restart Kernel and Run All**, or execute it from the same terminal:
-
-```bash
-python prepare.py --model-mode reuse
-```
-
-This command does not regenerate prepared inputs. It:
-
-1. Checks the saved model, selection and prepared-input hashes **before** checking legacy source-manifest consistency.
-2. Loads the original model/cutoff and displays the main results without fitting or overwriting them.
-3. Writes only the new supplementary results under `data/06_models/supplementary/`.
-
-If the model or original data is missing, restore your original `data/06_models/` and `data/experiments/` folders. A notebook output cannot reconstruct a trained model. Do not switch to training mode merely to replace missing artifacts after inspecting the final test. The original notebook results are preserved in `reports/` and Git history.
-
-## First run for a new study only
+Use Python 3.11 or newer. In the FYP folder on macOS/Linux:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
-python prepare.py --experiment all
-python -m jupyter lab
 ```
 
-Run 01–05 manually in order if you prefer; select the experiment in `pricecatcher_config.py`, restarting kernels when changing it. Notebook 01 integrates the shared January 2025–June 2026 sources once. For each experiment, rerun only 02–05. Integration needs internet access and enough memory for the selected basket across 18 monthly files.
+For an existing saved model, use its original environment/package versions from `data/06_models/model_manifest.json`. `reports/verification_environment.txt` records the cloud test environment, which can differ from the historical model environment.
 
-The runner reuses complete preparation by default, so repeating the command does not regenerate prepared files. Reproduction folders named `data_*` are also excluded from Git. If a notebook fails, its executed copy retains completed cells and the error for inspection; a failed run is never reported as completed. `--refresh` regenerates a study without a saved model. It refuses to overwrite preparation when `06_models/best_model.joblib` exists. For a new study, set a separate `PRICECATCHER_DATA_DIR` before starting Python/Jupyter; do not reuse the exposed test period as a fresh final test.
+## Existing completed experiment
 
-For an initial model experiment without existing saved artifacts, set `RUN_MODE = "train"` in 06 and run all cells. To run preparation and modelling together in a **separate** reproduction folder:
+Keep the original `data/06_models/` and `data/experiments/` folders. They contain local files that GitHub notebook outputs cannot recreate.
 
 ```bash
-PRICECATCHER_DATA_DIR="$PWD/data_reproduction" python prepare.py --experiment all --model-mode train
+python prepare.py --model-mode reuse
 ```
 
-On Windows set the environment variable using your shell's syntax. This reproduces the existing protocol; the already exposed test period does not become a new independent test. The executed Notebook 06 is saved inside its supplementary/executed folder. Training refuses to overwrite an existing model. Keep the first completed run and its artifacts.
+Alternatively, open Jupyter with `python -m jupyter lab`, keep `RUN_MODE = "reuse"` in 06, then **Restart Kernel and Run All**. Reuse checks model, selection and prepared-input hashes before loading the model. For a completed run it preserves all main files and writes supplementary analyses separately.
 
-## Notebook responsibilities
+If a prepared-input hash differs, restore the original matching file rather than editing the expected hash or retraining against an exposed test. A JSON-only mismatch may involve provenance/formatting; compare it with the saved manifest before changing data. The uploaded holdout settings were recoverable byte-for-byte from their original preparation metadata, but this does not prove that other local files are unchanged.
 
-| Notebook | Main task |
+New runs save a frozen model, cutoff and input-hash checkpoint before loading test rows. If execution stops afterward, the same reuse command finishes pending evaluation/exports without fitting or choosing another cutoff. The manifest changes from `evaluation_pending` to `completed` only after main exports succeed. A checkpoint failure before model activation leaves training restartable before test access. Older incomplete runs need their original matching artifacts; missing metadata is not invented.
+
+## Separate reproduction or new study
+
+Use a separate output folder to preserve the completed experiment:
+
+```bash
+PRICECATCHER_DATA_DIR="$PWD/data_reproduction" python prepare.py --experiment all --model-mode train --diagnostics
+```
+
+This integrates once, runs 02–05 and optional 90 for every fold, then trains/evaluates 06. It requires HTTPS access to `storage.data.gov.my` and enough memory for the selected basket across 18 monthly files. On Windows set `PRICECATCHER_DATA_DIR` using your shell's syntax.
+
+The existing April–June 2026 test is already exposed. Reproducing it does not create fresh independent evidence; new model development needs an exploratory label and an untouched period for a new final claim.
+
+For preparation only, use `python prepare.py --experiment all`. The runner reuses complete preparation by default. `--refresh` regenerates preparation only when no frozen model exists. Direct runs of notebooks 01–05 also stop if a saved model is present, preventing accidental replacement of its inputs. To run manually, set the output-folder environment variable before starting Jupyter, choose the experiment in configuration, and restart kernels when changing it.
+
+## Notebook order and outputs
+
+| Notebook | Task |
 |---|---|
-| 01 | Integrate monthly sources/lookups, check joins/keys and standardise egg units |
-| 02 | Screen item eligibility using the active training period only |
-| 03 | Learn training-only price bounds, document cleaning and geographical attrition |
-| 04 | Build Monday–Sunday prices, counts and equal-premise comparator |
-| 05 | Build exact-week lags, fixed labels, protected splits and coverage audits |
-| 06 | Compare four model families, freeze selection/cutoff, evaluate and interpret results |
-| 90, optional | Review extreme training changes, common shops and documented exclusions |
-
-Dates and output folders:
+| 01 | Integrate monthly data/lookups, validate keys/joins and standardise egg units |
+| 02 | Screen items using the active training period only |
+| 03 | Learn training-only bounds, document cleaning and geographical attrition |
+| 04 | Aggregate complete Monday–Sunday weeks and audit their coverage |
+| 05 | Build exact-week features, labels, chronological splits and geography audits |
+| 06 | Compare models, freeze selection/cutoff, evaluate and interpret results |
+| 90 | Optional extreme-change, matched-premise and exclusion-sensitivity diagnostics |
 
 | Experiment | Training outcomes through | Validation outcomes through | Test outcomes through |
 |---|---|---|---|
@@ -83,72 +76,41 @@ Dates and output folders:
 
 ```text
 data/
-  01_integrated/                 # shared integrated data, lookups and manifest
+  01_integrated/             # shared source, lookups, manifest and executed 01
   experiments/
-    fold_1/                      # fold_2, fold_3 and holdout use the same layout
+    fold_1/                  # fold_2, fold_3 and holdout have the same layout
       02_quality/
       03_cleaned/
       04_weekly/
       05_modelling/
-      executed/                  # generated by prepare.py
-  06_models/                     # original fitted model, cutoff and main metrics
-    supplementary/              # new post-hoc checks; main artifacts stay unchanged
+      executed/              # executed preparation/diagnostic notebooks
+      jupyter/               # runner's local kernel specification
+  06_models/                 # frozen model, main metrics and prediction files
+    supplementary/           # post-hoc results and executed model notebook
 ```
 
-## Definitions and safeguards
+A failed notebook retains its completed cells and error in the executed copy. Generated data, reproduction folders, kernels, models and virtual environments stay out of Git.
 
-A surge is an increase of **at least 10% in next week's observed local median**, for the same item, state, district and premise type:
+## Definitions and interpretation
 
-```text
-change_pct = 100 * (next_week_median / current_week_median - 1)
-y = 1 if change_pct >= 10, otherwise 0
-```
+A surge is an increase of **at least 10% in next week's observed local median** for the same item, state, district and premise type: `100 * (next_median / current_median - 1) >= 10`.
 
-Unsupported pairs remain unlabelled. The main rule requires two records and one premise in both weeks, a previous-week price and two historical prices in the preceding four calendar weeks. Missing weeks are inserted temporarily for exact lags; prices/labels are not imputed. Partial boundary weeks and outcome horizons crossing split cutoffs are excluded. Features exclude future prices, coverage and labels.
+Historical labels require two records and one premise in both weeks. Model-ready rows require a prior-week price and two observations in the previous four calendar weeks. Unsupported outcomes stay unlabelled; prices are not filled. Exact-week lags and past-only rolling features preserve gaps. Scope-boundary weeks and outcomes crossing split cutoffs are excluded. Item screening, bounds, imputation, encoding and class weights use each training period only. Source files are checked against recorded content hashes before preparation.
 
-Item screening, statistical bounds, model imputation, encoding and weights use each training period only. Full scope does not guarantee sufficient history everywhere. Use daily geographical attrition in 03, state/district eligibility tables in 05 and `series_coverage.csv` to report usable history and excluded places. Weekly exclusion reasons are sequential, not independent counts; final outcomes outside scope are structural rather than local missing-data failures. Completely unobserved places/weeks cannot be counted from observed records alone.
+Use 03's daily geographical attrition and 05's state/district/series tables to report sparse or excluded areas. Weekly reasons are sequential counts; completely unobserved places/weeks cannot be inferred from observed records. A weekly median reflects monitoring frequency and changing contributors, so it is not a fixed-shop price index. Statistical flags remain unconfirmed; the six documented suspected records are excluded only in holdout training by default, with sensitivity reported separately.
 
-New source manifests record SHA-256 hashes of the integrated data and lookup files, combined into a content-based `source_snapshot_sha256`. Changing an integration timestamp alone does not change this content identity. New training checks content IDs when available and rejects inconsistent sources. The exact manifest hash is still retained for provenance.
+The main experiment compares eight candidates across Logistic Regression, Random Forest, XGBoost and LightGBM. Mean expanding-fold average precision selects the candidate; 2026 validation F1 selects its score cutoff. The model is not refitted on validation. AP uses sklearn's average precision, not trapezoidal PR-AUC. Weighted scores are uncalibrated. Close candidate scores do not establish universal superiority.
 
-In reuse mode, the original saved-model/input checks always run first. A legacy run with differing manifest hashes may then be inspected with `historical_source_consistency_unresolved` recorded in `supplementary/source_provenance.json`. This is not proof of identical source data or a retrospective repair of the original evaluation. Changed frozen inputs still stop execution; restore their original matching files rather than editing stored hashes.
+Report false alerts, missed surges, group support and temporal variation. Comparisons evaluate the combined history, item/location, coverage and seasonal model; they do not isolate the effect of price history. Affordability, adoption and inequality benefits were not measured. Correct the report's older removal policy and screenshots to match the actual experiment.
 
-Statistical flags are retained by default. The holdout training period excludes six documented suspected tenfold-price records without inventing corrections. Early folds retain these retrospective exceptions because their review dates were not recorded. Other suspicious prices remain uncertainty. Lookup metadata is a downloaded snapshot, and upstream monthly prices may be revised; preserve your integrated source/lookup files and manifest.
+Supplementary analyses are explicitly post-hoc: a training-only food-group prevalence baseline, validation quality-flag diagnostics, and error/temporal context. They do not change model selection or the original cutoff. Legacy source inconsistencies are reported as unresolved after frozen artifact verification. A weekly audit with different provenance must still match preparation policies, current validation prices and target labels; the difference is recorded rather than treated as proof of identical historical sources or flags.
 
-## Main and supplementary evidence in 06
-
-The main experiment is unchanged: eight candidates across Logistic Regression, Random Forest, XGBoost and LightGBM; selection by mean fold average precision; final fit through December 2025; F1-based score cutoff chosen on January–March 2026; frozen evaluation on April–June 2026. The model is not refitted on validation after cutoff selection. `average_precision_score` is used, not trapezoidal PR-AUC. Scores from weighted models are uncalibrated. Undefined group metrics remain missing and support counts accompany the results.
-
-Three original success checks compare mean fold AP, test AP and test F1 with the specified baselines. They are not evidence of universal superiority or demonstrated affordability benefits. Existing test results are exposed: further model development needs an explicitly exploratory label and an untouched period for a new final claim.
-
-New supplementary checks are labelled **post-hoc**, outside the original benchmark selection:
-
-- **Food-group prevalence baseline:** training-only group frequencies, global-training fallback for unseen groups, its own validation-selected cutoff. Tests whether ranking adds information beyond food-group composition.
-- **Validation source-quality audit:** frozen predictions compared for pairs with/without suspicious records, with group counts. This is diagnostic evidence, not a causal explanation or a model-retraining robustness experiment. Target-week flags are audit evidence, never features.
-- **Error and temporal context:** false alerts among alerts, false positive rate, missed-surge fraction, prevalence/support and AP context across periods.
-
-Main files include `best_model.joblib`, `selection.json`, `model_manifest.json`, fold/validation/test metrics, group metrics and prediction Parquets. Supplementary outputs have their own settings file linking them to the original model and weekly audit. Later SHAP work should explain the saved pipeline and precompute selected explanations; Isolation Forest remains separate.
-
-## Tests and report updates
+## Verification and next stage
 
 ```bash
 python -m unittest discover -s tests -v
 ```
 
-Tests use synthetic monthly sources and real Parquet/Jupyter execution. The full command-line integration check runs 02–06 and optional 90 in fresh kernels across every fold; 01 is exercised against the synthetic monthly source fixture. It also verifies that diagnostics are not redundantly rerun for the holdout. They cover expanding-fold preparation, future-price independence, calendar gaps, training-only imputation, unseen categories, supplementary baseline fitting, saved-model prediction reproduction, hash checks and preservation of original artifacts during reuse. These tests do not establish real-data accuracy or robustness.
+Tests exercise synthetic sources and fresh-kernel notebook execution, source integrity, calendar gaps, fold boundaries, coverage, training-only preprocessing, saved predictions, recovery and preservation of frozen artifacts. They do not establish full-data performance. See `reports/verification_status.md` for the latest result and real-data run status.
 
-Update the report's older 1,950-record removal policy, boundary-week description and screenshots to match the actual run. Report baseline comparisons, false alerts, missed surges, food-group support, temporal variability and unresolved source uncertainty. Stakeholder adoption, affordability effects and omitted external drivers need appropriately limited claims; they are not proven by a good classification score.
-
-## Cloud verification status — 17 October 2026
-
-The cloud Python environment was restored and current dependencies were installed. Synthetic tests and real Jupyter executions are covered by the test suite, including unchanged frozen outputs and legacy snapshot handling. The attempted **full-source** run stopped at the first data download with `CONNECT tunnel failed: 403 Forbidden`: the cloud allowlist did not include `storage.data.gov.my`.
-
-A cloud configuration draft adds that official host and saves installation/startup instructions. It must be reviewed, saved and published in Environment Settings before the real download can run. This changes cloud access, not the repository's data or model. No fresh full-data metrics are claimed while that blocker remains. See `reports/verification_status.md` for the distinction between historical results, synthetic verification and the pending real-data reproduction.
-
-## Before the next FYP stage
-
-- Keep the completed model/cutoff and original data artifacts. Use reuse mode for supplementary work.
-- Finish one consistent-source real-data reproduction once the source host is accessible; a test suite alone is not that reproduction.
-- Update the report's definition, preparation policies, baseline comparisons and limitations from the appropriate run, clearly distinguishing the original and supplementary analyses.
-- Then explain the saved pipeline with SHAP, implement separate anomaly detection and evaluate the dashboard. Do not interpret weighted model scores as calibrated probabilities.
-
-A supplementary AP calculation from archived group totals gives approximately **0.22529** for the training-food-group-prevalence baseline, versus the original selected model's reported **0.331978**. This checks information beyond food-group membership; it does not isolate price history from other model features. It is an aggregate calculation from saved tables, not a new full-data run or validation-cutoff result. See the verification report for assumptions and limitations.
+After a consistent-source real-data reproduction and honest report update, continue with SHAP explanations of the saved pipeline, separate anomaly detection and dashboard evaluation. Precompute selected explanations for responsiveness.

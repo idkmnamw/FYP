@@ -39,6 +39,12 @@ def main():
     os.environ["PRICECATCHER_EXPERIMENT"] = args.experiment
     import pricecatcher_config as cfg
 
+    # Frozen-model reuse verifies prepared inputs in 06. New preparation also
+    # checks actual source bytes, even when the runner can reuse prepared files.
+    if args.model_mode != "reuse" and not (cfg.PROJECT_ROOT / "06_models" / "best_model.joblib").exists():
+        if cfg.STAGE1_COMBINED_PARQUET.exists() and (cfg.STAGE1_DIR / "source_manifest.json").exists():
+            cfg.verify_source_snapshot()
+
     required = [cfg.STAGE5_DIR / name for name in ["experiment_settings.json", "train.parquet",
                 "validation.parquet", "latest_prediction_inputs.parquet"]]
     if cfg.TEST_END_DATE:
