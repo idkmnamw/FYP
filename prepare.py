@@ -6,6 +6,9 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import shutil
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 
 REPOSITORY = Path(__file__).resolve().parent
@@ -16,8 +19,30 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--experiment", choices=EXPERIMENTS + ["all"], default="holdout")
     parser.add_argument("--refresh", action="store_true", help="Regenerate preparation for a study without a saved model")
+    parser.add_argument("--rerun-all", action="store_true", help="Execute all six notebooks in a new run folder, using cached source data when available")
     parser.add_argument("--model-mode", choices=["auto", "train", "reuse"], help="Run 06; auto reuses a model or creates a separate reproduction")
     args = parser.parse_args()
+    if args.rerun_all:
+        if args.refresh or args.model_mode is not None:
+            parser.error("Use --rerun-all by itself; it handles preparation and model execution.")
+        base = Path(os.environ.get("PRICECATCHER_DATA_DIR", REPOSITORY / "data")).expanduser().resolve()
+        run_root = base / "runs" / datetime.now(ZoneInfo("Asia/Kuala_Lumpur")).strftime("run_%Y%m%d_%H%M%S_%f")
+        # Each new execution owns its outputs. Never overwrite an exposed run.
+        candidates = [base / "01_integrated"] + sorted((base / "runs").glob("*/01_integrated"), reverse=True)
+        source = next((path for path in candidates if (path / "integrated_prices.parquet").exists()
+                       and (path / "source_manifest.json").exists()), None)
+        run_root.mkdir(parents=True, exist_ok=False)
+        if source is not None:
+            shutil.copytree(source, run_root / "01_integrated", ignore=shutil.ignore_patterns("executed"))
+        print(f"New reproduction: {run_root}", flush=True)
+        print("This repeats an exposed test period; it is not fresh independent validation.", flush=True)
+        run_env = {**os.environ, "PRICECATCHER_DATA_DIR": str(run_root)}
+        subprocess.run([sys.executable, str(Path(__file__).resolve()), "--experiment", "all"],
+                       env=run_env, check=True, cwd=REPOSITORY)
+        subprocess.run([sys.executable, str(Path(__file__).resolve()), "--model-mode", "auto"],
+                       env=run_env, check=True, cwd=REPOSITORY)
+        print(f"All notebooks completed. Outputs: {run_root}", flush=True)
+        return
     model_only = args.model_mode in {"auto", "reuse"}
     if args.refresh and model_only:
         parser.error("--refresh regenerates preparation; use it separately from auto/reuse mode.")
@@ -95,7 +120,8 @@ def main():
             nbformat.write(notebook, output_folder / filename)
 
     if prepare_needed:
-        if not cfg.STAGE1_COMBINED_PARQUET.exists() or not (cfg.STAGE1_DIR / "source_manifest.json").exists():
+        if (not cfg.STAGE1_COMBINED_PARQUET.exists() or not (cfg.STAGE1_DIR / "source_manifest.json").exists()
+                or not (cfg.STAGE1_DIR / "executed" / "01_integrate_pricecatcher.ipynb").exists()):
             run_notebook("01_integrate_pricecatcher.ipynb", cfg.STAGE1_DIR / "executed")
         for filename in ["02_data_understanding_and_quality.ipynb", "03_cleaning_and_outliers.ipynb",
                          "04_weekly_aggregation.ipynb", "05_features_and_labels.ipynb"]:

@@ -4,6 +4,7 @@ from datetime import date
 import hashlib
 import json
 import os
+import numpy as np
 
 # Outputs stay beside this file by default. Set PRICECATCHER_DATA_DIR to override.
 PROJECT_ROOT = Path(os.environ.get("PRICECATCHER_DATA_DIR", Path(__file__).resolve().parent / "data")).expanduser().resolve()
@@ -75,6 +76,8 @@ REMOVE_FLAGGED_PRICES = False  # A statistical flag does not confirm an error.
 
 # Common next-week surge definition: project setting, not an official standard.
 SURGE_THRESHOLD_PCT = 10.0
+# Percentage-point tolerance for floating-point arithmetic, not an economic margin.
+LABEL_TOLERANCE_PCT = 1e-10
 TARGET_STATUS = "working research definition: observed local median, not a fixed-shop price index"
 MIN_RECORDS = 2
 MIN_PREMISES = 1
@@ -91,10 +94,16 @@ STAGE4_WEEKLY_PARQUET = STAGE4_DIR / "weekly_prices.parquet"
 MODEL_DIRS = (PROJECT_ROOT / "06_models", PROJECT_ROOT / "06_models_reproduction")
 
 
+def surge_mask(change_pct, threshold_pct, tolerance_pct=LABEL_TOLERANCE_PCT):
+    """Count an exact threshold rise despite tiny floating-point rounding errors."""
+    return (change_pct >= threshold_pct) | np.isclose(
+        change_pct, threshold_pct, rtol=0, atol=tolerance_pct)
+
+
 def protect_frozen_preparation():
     """Keep direct notebook runs from replacing inputs of an existing model."""
     if any((folder / "best_model.joblib").exists() for folder in MODEL_DIRS):
-        raise ValueError("A frozen model exists. Use 06 in reuse mode. Run 01–05 only in a separate PRICECATCHER_DATA_DIR for a new study.")
+        raise ValueError("A frozen model exists. Reuse it in 06, or run python prepare.py --rerun-all to execute all notebooks in a separate run folder.")
 
 
 def verify_source_snapshot():
@@ -121,7 +130,7 @@ def verify_source_snapshot():
 
 # Saved at every stage; changing settings requires rerunning 02–05 for this experiment.
 PREPARATION_SETTINGS = {
-    "schema_version": 2, "experiment": EXPERIMENT,
+    "schema_version": 3, "experiment": EXPERIMENT,
     "source_start_month": START_MONTH, "source_end_month": END_MONTH,
     "train_end": TRAIN_END_DATE, "validation_end": VALIDATION_END_DATE,
     "test_end": TEST_END_DATE, "evaluation_end": EVALUATION_END_DATE,
@@ -137,6 +146,8 @@ PREPARATION_SETTINGS = {
     "comparison_minimum_premises": COMPARISON_MIN_PREMISES,
     "comparison_minimum_days": COMPARISON_MIN_DAYS,
     "surge_threshold_pct": SURGE_THRESHOLD_PCT, "target_status": TARGET_STATUS,
+    "label_comparison": "greater_equal_with_absolute_tolerance",
+    "label_tolerance_pct": LABEL_TOLERANCE_PCT,
     "aggregation": "median of daily observations; equal-premise comparator only",
     "imputation": "none in preparation; fit feature imputation within each model training fold",
 }
