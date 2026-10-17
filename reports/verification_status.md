@@ -10,7 +10,7 @@ This report separates three kinds of evidence. The completed user-run output sna
 - Additional tests cover content identity versus timestamped manifests and inspection of an unchanged synthetic legacy run with historical manifest differences. New training still rejects inconsistent sources, and changed frozen inputs are not accepted.
 - The optional runner can execute 06 using `--model-mode reuse`, without regenerating preparation, or execute preparation plus 06 using `--experiment all --model-mode train` in a separate folder.
 
-Final test result: **11 tests passed in 36.740 seconds**, including real-kernel initial training and command-line reuse of synthetic modern/legacy completed runs. These checks do not establish real-data performance. Only the existing two top-level Python files are needed: configuration and the optional runner.
+Latest test result: **11 tests passed in 71.005 seconds**, including the full command-line preparation/diagnostics/model workflow in fresh kernels and reuse of synthetic modern/legacy completed runs. These checks do not establish real-data performance. Only the existing two top-level Python files are needed: configuration and the optional runner.
 
 ## Full-data run: blocked, not passed
 
@@ -48,3 +48,21 @@ New runs now use content-based source identity. Reuse of a historically inconsis
 Compare the new integration/cleaning counts and source IDs with the historical evidence; report any upstream revisions. Inspect the full fold comparisons, final confusion counts, food-group/geographical support and the supplementary training-only group-prevalence baseline. Review validation quality-flag strata and group composition without treating flags as confirmed errors or the diagnostic as a retraining robustness experiment. Report differences as a reproduction/exploratory result; the exposed test period is not fresh independent evidence.
 
 The main FYP claim should remain proportional: a baseline-comparing, explainable monitoring prototype based on observed local medians. Affordability improvements, stakeholder adoption and inequality reductions require evidence beyond these classification results. Isolation Forest, SHAP precomputation and dashboard evaluation remain separate next-stage objectives.
+
+## Final workflow review and aggregate supplementary calculation
+
+The latest workflow review retains the same target, model candidates and original cutoff rules. It adds no application Python module. The optional runner now keeps the executed notebook even when a cell fails, skips a duplicate holdout diagnostic pass during an all-experiment model run, and rejects the contradictory combination of refresh with reuse. Local reproduction directories named `data_*` are excluded from Git.
+
+The stronger integration check executes preparation 02–05, optional 90 for every fold, and model notebook 06 through the actual command-line runner with fresh Jupyter kernels. Notebook 01 is exercised against synthetic monthly source fixtures. These are execution checks, not downloaded full-source results. The latest real-source attempt saved its failed 01 notebook outside the repository at `/workspace/fyp-reproduction-20261017/01_integrated/executed/01_integrate_pricecatcher.ipynb`; its lookup-loading cell records the same HTTP tunnel 403.
+
+An additional **post-hoc aggregate baseline calculation** is possible without the raw files. The archived Notebook 05 output supplies training counts and positives by food group; the archived Notebook 06 output supplies test counts and positives by group. Their totals reconcile to 195,664 training rows / 20,002 positives and 57,456 test rows / 7,107 positives. Total agreement does not establish exact row or snapshot identity, so this calculation is conditional on the tables describing the same cohorts.
+
+Assign each test row its food group's **training** positive fraction. The descending score order is vegetables, eggs, rice, chicken, flour, cooking oil, sugar. Within each group the score is tied. Average precision can therefore be calculated from aggregate counts exactly as the sum, over groups, of the group's fraction of all positives times cumulative precision after adding that group. An expansion into tied-score observations was checked against sklearn's `average_precision_score` and gives the same value.
+
+| Archived-results supplementary comparison | AP |
+|---|---:|
+| Training food-group prevalence baseline | 0.2252897161 |
+| Original selected LightGBM, reported AP | 0.331978 |
+| Absolute AP difference | 0.1066882839 |
+
+This is stronger contextual evidence than comparison only against the always-no-surge or current-change rule. The model appears to add ranking information beyond food-group membership in these archived cohorts. However, its additional inputs include item/location and coverage variables as well as price history, so this comparison does not isolate the contribution of temporal features. No validation-selected cutoff, F1 score or confidence interval is inferred for the prevalence baseline from unavailable validation group counts. The raw-data supplementary notebook remains the authoritative path for a consistent-source reproduction. These figures must remain labelled supplementary and must not change the original model selection or probability-score cutoff.

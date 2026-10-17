@@ -8,7 +8,7 @@ Notebooks **01–06** prepare local weekly prices, compare surge classifiers and
 | `prepare.py` | Optional runner for 01–05; not needed for interactive notebook use |
 | `requirements.txt` | Dependencies |
 | `tests/` | Automated synthetic-data checks; not application code |
-| `reports/completed_main_experiment.md` | Snapshot of your previously executed Notebook 06 tables |
+| `reports/` | Original result snapshot, qualified interpretation and verification environment |
 | `data/` | Local source snapshots, prepared folds, saved model and results; excluded from Git |
 
 The former `pricecatcher_features.py` and `pricecatcher_modelling.py` are no longer needed. Their necessary functions are inside the relevant notebooks. Notebook 90 remains optional source-review evidence.
@@ -50,7 +50,7 @@ python -m jupyter lab
 
 Run 01–05 manually in order if you prefer; select the experiment in `pricecatcher_config.py`, restarting kernels when changing it. Notebook 01 integrates the shared January 2025–June 2026 sources once. For each experiment, rerun only 02–05. Integration needs internet access and enough memory for the selected basket across 18 monthly files.
 
-The runner reuses complete preparation by default, so repeating the command does not regenerate prepared files. `--refresh` regenerates a study without a saved model. It refuses to overwrite preparation when `06_models/best_model.joblib` exists. For a new study, set a separate `PRICECATCHER_DATA_DIR` before starting Python/Jupyter; do not reuse the exposed test period as a fresh final test.
+The runner reuses complete preparation by default, so repeating the command does not regenerate prepared files. Reproduction folders named `data_*` are also excluded from Git. If a notebook fails, its executed copy retains completed cells and the error for inspection; a failed run is never reported as completed. `--refresh` regenerates a study without a saved model. It refuses to overwrite preparation when `06_models/best_model.joblib` exists. For a new study, set a separate `PRICECATCHER_DATA_DIR` before starting Python/Jupyter; do not reuse the exposed test period as a fresh final test.
 
 For an initial model experiment without existing saved artifacts, set `RUN_MODE = "train"` in 06 and run all cells. To run preparation and modelling together in a **separate** reproduction folder:
 
@@ -134,7 +134,7 @@ Main files include `best_model.joblib`, `selection.json`, `model_manifest.json`,
 python -m unittest discover -s tests -v
 ```
 
-Tests use synthetic sources and real Parquet/Jupyter execution. They cover expanding-fold preparation, future-price independence, calendar gaps, training-only imputation, unseen categories, supplementary baseline fitting, saved-model prediction reproduction, hash checks and preservation of original artifacts during reuse. These tests do not establish real-data accuracy or robustness.
+Tests use synthetic monthly sources and real Parquet/Jupyter execution. The full command-line integration check runs 02–06 and optional 90 in fresh kernels across every fold; 01 is exercised against the synthetic monthly source fixture. It also verifies that diagnostics are not redundantly rerun for the holdout. They cover expanding-fold preparation, future-price independence, calendar gaps, training-only imputation, unseen categories, supplementary baseline fitting, saved-model prediction reproduction, hash checks and preservation of original artifacts during reuse. These tests do not establish real-data accuracy or robustness.
 
 Update the report's older 1,950-record removal policy, boundary-week description and screenshots to match the actual run. Report baseline comparisons, false alerts, missed surges, food-group support, temporal variability and unresolved source uncertainty. Stakeholder adoption, affordability effects and omitted external drivers need appropriately limited claims; they are not proven by a good classification score.
 
@@ -143,3 +143,12 @@ Update the report's older 1,950-record removal policy, boundary-week description
 The cloud Python environment was restored and current dependencies were installed. Synthetic tests and real Jupyter executions are covered by the test suite, including unchanged frozen outputs and legacy snapshot handling. The attempted **full-source** run stopped at the first data download with `CONNECT tunnel failed: 403 Forbidden`: the cloud allowlist did not include `storage.data.gov.my`.
 
 A cloud configuration draft adds that official host and saves installation/startup instructions. It must be reviewed, saved and published in Environment Settings before the real download can run. This changes cloud access, not the repository's data or model. No fresh full-data metrics are claimed while that blocker remains. See `reports/verification_status.md` for the distinction between historical results, synthetic verification and the pending real-data reproduction.
+
+## Before the next FYP stage
+
+- Keep the completed model/cutoff and original data artifacts. Use reuse mode for supplementary work.
+- Finish one consistent-source real-data reproduction once the source host is accessible; a test suite alone is not that reproduction.
+- Update the report's definition, preparation policies, baseline comparisons and limitations from the appropriate run, clearly distinguishing the original and supplementary analyses.
+- Then explain the saved pipeline with SHAP, implement separate anomaly detection and evaluate the dashboard. Do not interpret weighted model scores as calibrated probabilities.
+
+A supplementary AP calculation from archived group totals gives approximately **0.22529** for the training-food-group-prevalence baseline, versus the original selected model's reported **0.331978**. This checks information beyond food-group membership; it does not isolate price history from other model features. It is an aggregate calculation from saved tables, not a new full-data run or validation-cutoff result. See the verification report for assumptions and limitations.

@@ -19,6 +19,8 @@ def main():
     parser.add_argument("--refresh", action="store_true", help="Regenerate preparation for a study without a saved model")
     parser.add_argument("--model-mode", choices=["train", "reuse"], help="Also execute 06 after preparation; reuse never regenerates inputs")
     args = parser.parse_args()
+    if args.refresh and args.model_mode == "reuse":
+        parser.error("--refresh regenerates preparation; it cannot be combined with --model-mode reuse.")
     if args.experiment == "all":
         # Separate processes keep settings and notebook kernels isolated between folds.
         for experiment in ([] if args.model_mode == "reuse" else EXPERIMENTS):
@@ -31,6 +33,8 @@ def main():
         if args.model_mode is None:
             return
         args.experiment = "holdout"
+        if args.model_mode == "train":
+            args.diagnostics = False  # Each child experiment already ran its diagnostics.
 
     os.environ["PRICECATCHER_EXPERIMENT"] = args.experiment
     import pricecatcher_config as cfg
@@ -79,9 +83,12 @@ def main():
         client = NotebookClient(notebook, timeout=None, kernel_name="pricecatcher",
                                 resources={"metadata": {"path": str(REPOSITORY)}})
         # Each notebook starts with a fresh kernel. A failed cell stops the run.
-        client.execute()
-        output_folder.mkdir(parents=True, exist_ok=True)
-        nbformat.write(notebook, output_folder / filename)
+        try:
+            client.execute()
+        finally:
+            # Preserve completed cells and the error for inspection if execution fails.
+            output_folder.mkdir(parents=True, exist_ok=True)
+            nbformat.write(notebook, output_folder / filename)
 
     if prepare_needed:
         if not cfg.STAGE1_COMBINED_PARQUET.exists() or not (cfg.STAGE1_DIR / "source_manifest.json").exists():

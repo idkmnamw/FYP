@@ -9,7 +9,6 @@ from unittest.mock import patch
 
 import joblib
 import nbformat
-from nbclient import NotebookClient
 import numpy as np
 import pandas as pd
 
@@ -94,24 +93,19 @@ class ModellingTests(unittest.TestCase):
     def test_notebook_runs_and_saved_pipeline_reproduces_test_scores(self):
         fixtures.PreparationTests.setUpClass()
         try:
-            for experiment in ["fold_1", "fold_2", "fold_3", "holdout"]:
-                cfg = fixtures.PreparationTests.prepare(experiment)
-            # The real notebook kernel must run the same Python interpreter/dependencies.
-            kernel_root = cfg.PROJECT_ROOT / "test_jupyter"
-            folder = kernel_root / "kernels" / "pricecatcher-test"
-            folder.mkdir(parents=True)
-            (folder / "kernel.json").write_text(json.dumps({
-                "argv": [sys.executable, "-m", "ipykernel_launcher", "-f", "{connection_file}"],
-                "display_name": "PriceCatcher test", "language": "python",
-            }))
-            notebook = nbformat.read(ROOT / "06_model_training_and_evaluation.ipynb", as_version=4)
-            nbformat.validate(notebook)
-            for cell in notebook.cells:
-                if cell.cell_type == "code":
-                    cell.source = cell.source.replace('RUN_MODE = "reuse"', 'RUN_MODE = "train"')
-            with patch.dict(os.environ, {"JUPYTER_PATH": str(kernel_root) + os.pathsep + os.environ.get("JUPYTER_PATH", "")}):
-                NotebookClient(notebook, timeout=240, kernel_name="pricecatcher-test",
-                    resources={"metadata": {"path": str(ROOT)}}).execute()
+            cfg = fixtures.PreparationTests.cfg
+            # Real Jupyter execution of 02–06 and optional 90 across all synthetic folds.
+            # 01 was exercised above against synthetic monthly sources; no network is needed.
+            completed = subprocess.run(
+                [sys.executable, str(ROOT / "prepare.py"), "--experiment", "all", "--model-mode", "train", "--diagnostics"],
+                check=True, capture_output=True, text=True)
+            self.assertEqual(completed.stdout.count("90_optional_source_diagnostics.ipynb"), 4)
+            for name in ["fold_1", "fold_2", "fold_3", "holdout"]:
+                executed = cfg.PROJECT_ROOT / "experiments" / name / "executed"
+                for filename in ["02_data_understanding_and_quality.ipynb", "03_cleaning_and_outliers.ipynb",
+                                 "04_weekly_aggregation.ipynb", "05_features_and_labels.ipynb", "90_optional_source_diagnostics.ipynb"]:
+                    notebook = nbformat.read(executed / filename, as_version=4)
+                    self.assertTrue(all(c.execution_count is not None for c in notebook.cells if c.cell_type == "code"))
             outputs = cfg.PROJECT_ROOT / "06_models"
             fold_metrics = pd.read_csv(outputs / "fold_metrics.csv")
             self.assertEqual(len(fold_metrics), 30)  # 8 candidates + 2 baselines, across 3 folds.
