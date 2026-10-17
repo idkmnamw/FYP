@@ -15,33 +15,30 @@ EXPERIMENTS = ["fold_1", "fold_2", "fold_3", "holdout"]
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--experiment", choices=EXPERIMENTS + ["all"], default="holdout")
-    parser.add_argument("--diagnostics", action="store_true", help="Also run optional Notebook 90")
     parser.add_argument("--refresh", action="store_true", help="Regenerate preparation for a study without a saved model")
-    parser.add_argument("--model-mode", choices=["train", "reuse"], help="Also execute 06 after preparation; reuse never regenerates inputs")
+    parser.add_argument("--model-mode", choices=["auto", "train", "reuse"], help="Run 06; auto reuses a model or creates a separate reproduction")
     args = parser.parse_args()
-    if args.refresh and args.model_mode == "reuse":
-        parser.error("--refresh regenerates preparation; it cannot be combined with --model-mode reuse.")
+    model_only = args.model_mode in {"auto", "reuse"}
+    if args.refresh and model_only:
+        parser.error("--refresh regenerates preparation; use it separately from auto/reuse mode.")
     if args.experiment == "all":
         # Separate processes keep settings and notebook kernels isolated between folds.
-        for experiment in ([] if args.model_mode == "reuse" else EXPERIMENTS):
+        for experiment in ([] if model_only else EXPERIMENTS):
             command = [sys.executable, str(Path(__file__).resolve()), "--experiment", experiment]
-            if args.diagnostics:
-                command.append("--diagnostics")
             if args.refresh:
                 command.append("--refresh")
             subprocess.run(command, check=True, cwd=REPOSITORY)
         if args.model_mode is None:
             return
         args.experiment = "holdout"
-        if args.model_mode == "train":
-            args.diagnostics = False  # Each child experiment already ran its diagnostics.
 
     os.environ["PRICECATCHER_EXPERIMENT"] = args.experiment
     import pricecatcher_config as cfg
 
     # Frozen-model reuse verifies prepared inputs in 06. New preparation also
     # checks actual source bytes, even when the runner can reuse prepared files.
-    if args.model_mode != "reuse" and not (cfg.PROJECT_ROOT / "06_models" / "best_model.joblib").exists():
+    frozen_model = any((folder / "best_model.joblib").exists() for folder in cfg.MODEL_DIRS)
+    if not model_only and not frozen_model:
         if cfg.STAGE1_COMBINED_PARQUET.exists() and (cfg.STAGE1_DIR / "source_manifest.json").exists():
             cfg.verify_source_snapshot()
 
@@ -57,10 +54,10 @@ def main():
         manifest_path = cfg.STAGE1_DIR / "source_manifest.json"
         if manifest_path.exists():
             complete = complete and settings["preparation"]["source_manifest_sha256"] == hashlib.sha256(manifest_path.read_bytes()).hexdigest()
-    prepare_needed = (args.refresh or not complete) and args.model_mode != "reuse"
-    if prepare_needed and (cfg.PROJECT_ROOT / "06_models" / "best_model.joblib").exists():
+    prepare_needed = (args.refresh or not complete) and not model_only
+    if prepare_needed and frozen_model:
         raise SystemExit("A completed model exists. Restore its original prepared files instead of regenerating them. Use a separate PRICECATCHER_DATA_DIR for a new study.")
-    if not prepare_needed and not args.diagnostics and args.model_mode is None:
+    if not prepare_needed and args.model_mode is None:
         print(f"{cfg.EXPERIMENT}: existing preparation reused at {cfg.RUN_DIR}")
         return
 
@@ -85,7 +82,8 @@ def main():
         if filename.startswith("06_"):
             for cell in notebook.cells:
                 if cell.cell_type == "code":
-                    cell.source = cell.source.replace('RUN_MODE = "reuse"', f'RUN_MODE = "{args.model_mode}"')
+                    cell.source = "\n".join(f'RUN_MODE = "{args.model_mode}"' if line.startswith("RUN_MODE = ") else line
+                                             for line in cell.source.splitlines())
         client = NotebookClient(notebook, timeout=None, kernel_name="pricecatcher",
                                 resources={"metadata": {"path": str(REPOSITORY)}})
         # Each notebook starts with a fresh kernel. A failed cell stops the run.
@@ -102,11 +100,14 @@ def main():
         for filename in ["02_data_understanding_and_quality.ipynb", "03_cleaning_and_outliers.ipynb",
                          "04_weekly_aggregation.ipynb", "05_features_and_labels.ipynb"]:
             run_notebook(filename, cfg.RUN_DIR / "executed")
-    if args.diagnostics:
-        run_notebook("90_optional_source_diagnostics.ipynb", cfg.RUN_DIR / "executed")
     if args.model_mode:
-        run_notebook("06_model_training_and_evaluation.ipynb", cfg.PROJECT_ROOT / "06_models" / "supplementary" / "executed")
-    print(f"Completed. Outputs: {cfg.RUN_DIR}")
+        original_dir, reproduction_dir = cfg.MODEL_DIRS
+        model_dir = original_dir
+        if model_only and not any((original_dir / name).exists() for name in ["best_model.joblib", "model_manifest.json"]):
+            if args.model_mode == "auto" or any((reproduction_dir / name).exists() for name in ["best_model.joblib", "model_manifest.json"]):
+                model_dir = reproduction_dir
+        run_notebook("06_model_training_and_evaluation.ipynb", model_dir / "supplementary" / "executed")
+    print(f"Completed. Outputs: {model_dir if args.model_mode else cfg.RUN_DIR}")
 
 
 if __name__ == "__main__":

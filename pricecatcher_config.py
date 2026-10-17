@@ -88,11 +88,12 @@ STAGE1_COMBINED_PARQUET = STAGE1_DIR / "integrated_prices.parquet"
 STAGE2_ITEM_COVERAGE_CSV = STAGE2_DIR / "training_item_coverage.csv"
 STAGE3_MODEL_READY_PARQUET = STAGE3_DIR / "daily_prices.parquet"
 STAGE4_WEEKLY_PARQUET = STAGE4_DIR / "weekly_prices.parquet"
+MODEL_DIRS = (PROJECT_ROOT / "06_models", PROJECT_ROOT / "06_models_reproduction")
 
 
 def protect_frozen_preparation():
     """Keep direct notebook runs from replacing inputs of an existing model."""
-    if (PROJECT_ROOT / "06_models" / "best_model.joblib").exists():
+    if any((folder / "best_model.joblib").exists() for folder in MODEL_DIRS):
         raise ValueError("A frozen model exists. Use 06 in reuse mode. Run 01–05 only in a separate PRICECATCHER_DATA_DIR for a new study.")
 
 
