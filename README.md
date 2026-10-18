@@ -57,8 +57,8 @@ The supplementary source-quality audit is optional. Missing or mismatched weekly
 | 02 | Screen item coverage using training data only |
 | 03 | Clean invalid records, flag suspicious prices and audit geographical attrition |
 | 04 | Aggregate complete Monday–Sunday weeks and supporting coverage |
-| 05 | Build calendar lags, labels, protected splits and coverage/sensitivity tables |
-| 06 | Compare models, freeze selection/cutoff and report performance/limitations |
+| 05 | Build calendar lags, labels, protected splits and coverage/sensitivity tables, including matched-premise training comparisons |
+| 06 | Compare models, freeze selection/cutoff and report performance/limitations with supplementary paired week-bootstrap intervals |
 
 ## Labels and research limits
 
@@ -67,3 +67,11 @@ A surge is a next-calendar-week observed local median increase of at least **10%
 Missing outcomes remain unlabelled. Exact-week lags, past-only rolling features, fold-specific preparation and training-only model preprocessing protect chronology. Three expanding validation folds are within 2025; holdout trains through December 2025, selects its score cutoff on January–March 2026 and evaluates on April–June 2026. Future prices/coverage never enter the model feature list.
 
 Suspicious source prices are not automatically confirmed errors. The six documented conservative exclusions and remaining flags are recorded; the dataset is not fully verified. Report sparse/excluded areas, scarce group positives, aggregation sensitivity, false alerts, missed surges and temporal variation. Weighted scores are uncalibrated. Combined-model baseline improvements do not isolate the value of history alone. Affordability, adoption and inequality benefits have not been measured. SHAP, separate anomaly detection and dashboard evaluation remain next-stage work.
+
+## Read the supplementary evidence
+
+Notebook 05 adds `training_matched_premise_sensitivity.csv`: compare next-week prices using the same premises in both weeks, with one weekly median per premise. It reports support and label disagreement for one-/two-premise minimum panels. This uses training outcomes only and does not change labels, features or eligibility. Generate it in a new `--rerun-all` folder; do not replace a frozen run's prepared files.
+
+Notebook 06 adds `supplementary/test_week_bootstrap.csv` and its settings JSON. It resamples whole weeks 300 times, pairing the frozen model with the current-change and training food-group baselines. Main files, choices and cutoffs stay unchanged. These are post-hoc descriptive intervals within a short test period, not new independent validation or evidence across years. Week resampling does not preserve dependence between successive weeks. Reuse mode can generate them without refitting. Existing notebook outputs describe the last local execution; newly added cells need execution before quoting their results.
+
+No new Python modules, SHAP dependency or dashboard files are needed for these checks. Separate Isolation Forest, SHAP caching and dashboard evaluation remain next-stage work.
