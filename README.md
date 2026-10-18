@@ -16,36 +16,37 @@ If Notebook 06 reports missing `nbformat`, its kernel is using a Python without 
 
 For Jupyter, run `python -m jupyter lab` and select this environment as the kernel. Restore an older saved model using the package versions in its own `model_manifest.json`.
 
-## Rerun the complete workflow
+## Everyday use: Run All in 01 → 06
+
+1. Open the FYP folder in VS Code and select the project's `.venv` Python kernel.
+2. Open Notebook **01** and select **Run All**. It starts a new run automatically, copying a verified cached source when available.
+3. Run **02 → 03 → 04 → 05** in order. Each uses the same remembered folder and prints its path.
+4. Run **06**. It prepares any missing expanding-window folds, then compares models and displays results. No folder, environment-variable or mode edits are needed.
+5. To view results again, Run All in **06**; it verifies and reuses the saved model. To repeat the entire experiment, start again at **01**.
+
+Wait for each notebook to finish before starting the next. Do not start a new run in 01 while another notebook/terminal run is executing. Remove any old extra setup cells that manually set `PRICECATCHER_DATA_DIR` or `PRICECATCHER_EXPERIMENT` before using this automatic workflow. Those variables remain supported for advanced/terminal runs and override automatic selection.
+
+Previous experiments stay under `data/runs/run_<timestamp>/`. A small generated `data/active_run.txt` remembers the current run across kernels; do not edit it during a run. Original data/models stored directly under `data/` are also preserved. Clearing notebook outputs or restarting a kernel does not delete files. A completed run's 02–05 inputs remain protected; restart at 01 for a new reproduction.
+
+A complete cached source avoids monthly downloads. Without a cache, 01 needs access to `storage.data.gov.my`. That download was blocked by this cloud's proxy (403); normal Mac access may work. Failed downloads stop execution rather than export partial data. Notebook 06 can take longer because it prepares folds and compares eight candidates; its cell outputs show progress.
+
+The configured April–June 2026 test has already been inspected. Every rebuild is a **reproduction**, not fresh independent validation. Do not tune against reproduced test results. Keep the source snapshot, environment and run folder for results cited in the report. Existing saved outputs describe their last execution; new outputs appear after Run All.
+
+## Optional terminal runner
 
 ```bash
 python prepare.py --rerun-all
 ```
 
-Repeat this command whenever a complete rerun is needed. It:
+This performs the same complete workflow with fresh kernels, saves executed notebook copies inside the new run folder, and remembers that folder for later interactive use. You do not need this command for everyday manual execution. `prepare.py` stays because 06 uses it internally for missing folds.
 
-1. Creates a separate folder under `data/runs/run_<timestamp>/`, preserving earlier results.
-2. Copies an existing source snapshot, if available, and verifies its hashes. It can use a source cached by an earlier complete run.
-3. Executes Notebook 01 using that cached source, then 02–05 separately for each expanding fold and holdout, then 06.
-4. Saves executed notebooks, settings, coverage audits, models and metrics inside the new run folder.
-
-With a complete cached source, no monthly data download is needed. Without one, the first run needs access to `storage.data.gov.my`. That download is currently blocked by this cloud's proxy (403); it can work from a Mac with normal access. Missing dependencies, inaccessible sources or changed/corrupt files produce an explicit error rather than silently accepting incomplete results.
-
-The configured April–June 2026 test has already been inspected. Every rebuild is a **reproduction**, not fresh independent validation. Do not tune against reproduced test results. Keep the source snapshot, environment and run folder for results cited in the report.
-
-## Reopen a completed run without retraining
-
-Use the exact run folder printed by the command:
+Advanced users can select a specific saved folder explicitly:
 
 ```bash
 PRICECATCHER_DATA_DIR="/path/to/FYP/data/runs/run_<timestamp>" python prepare.py --model-mode auto
 ```
 
-For the latest local run, use `python prepare.py --model-mode auto`, or open Notebook 06 with `RUN_MODE = "auto"` and `DATA_FOLDER = None`, then Restart Kernel → Run All. It finds the latest local run under `data/runs/` by folder date and prints the selected path; it never selects by performance. If there are no run folders, it uses `data/`. To inspect a particular original or reproduction run, set `DATA_FOLDER` to its absolute folder path in the notebook. The selected Python executable is also printed to help identify kernel/environment problems.
-
-If no model/manifest exists, auto trains into a separate reproduction folder. Missing, outdated or incomplete fold preparation can be generated from local integrated data when no frozen model protects it. Model reuse uses the verified saved preparation policies and dates rather than today's editable defaults. It checks all frozen inputs and lists missing files; missing essential fold/validation result files are reported together.
-
-A partial saved run is never silently replaced. Reuse verifies the model, selection and prepared-input hashes. It may recover holdout metadata only when the entire reconstructed settings file has the exact original recorded hash and every other frozen input passes; the changed JSON is backed up. Model/Parquet files and expected hashes are preserved. A pending evaluation can resume with the frozen model/cutoff. Direct runs of 01–05 stop when they would replace a frozen run's inputs; use `--rerun-all` instead.
+A partial saved run is never silently replaced. Reuse verifies model/selection/input hashes and follows the saved preparation settings. It can restore metadata only when the entire reconstructed settings file has the exact recorded original hash and every other frozen input passes; the changed JSON is backed up. Pending evaluation resumes with the frozen model/cutoff. Changed model/data files remain blocking errors.
 
 The supplementary source-quality audit is optional. Missing or mismatched weekly audit data is recorded as **unavailable**, with the reason; stale supplementary audit tables are removed. Verified main results can still be viewed, and unavailable never means the audit passed. Model/input mismatches and incompatible saved experiments remain blocking errors. Boosting libraries are imported only when their models are needed; training the full comparison still requires all declared dependencies.
 
@@ -70,7 +71,7 @@ Suspicious source prices are not automatically confirmed errors. The six documen
 
 ## Read the supplementary evidence
 
-Notebook 05 adds `training_matched_premise_sensitivity.csv`: compare next-week prices using the same premises in both weeks, with one weekly median per premise. It reports support and label disagreement for one-/two-premise minimum panels. This uses training outcomes only and does not change labels, features or eligibility. Generate it in a new `--rerun-all` folder; do not replace a frozen run's prepared files.
+Notebook 05 adds `training_matched_premise_sensitivity.csv`: compare next-week prices using the same premises in both weeks, with one weekly median per premise. It reports support and label disagreement for one-/two-premise minimum panels. This uses training outcomes only and does not change labels, features or eligibility. Generate it by starting at Notebook 01 and continuing through 05; do not replace a frozen run's prepared files.
 
 Notebook 06 adds `supplementary/test_week_bootstrap.csv` and its settings JSON. It resamples whole weeks 300 times, pairing the frozen model with the current-change and training food-group baselines. Main files, choices and cutoffs stay unchanged. These are post-hoc descriptive intervals within a short test period, not new independent validation or evidence across years. Week resampling does not preserve dependence between successive weeks. Reuse mode can generate them without refitting. Existing notebook outputs describe the last local execution; newly added cells need execution before quoting their results.
 

@@ -1,14 +1,48 @@
 """Shared settings for Notebooks 01–06. Keep this file beside the notebooks."""
 from pathlib import Path
-from datetime import date
+from datetime import date, datetime
 import hashlib
 import json
 import os
+import shutil
+from zoneinfo import ZoneInfo
 import numpy as np
 
-# Outputs stay beside this file by default. Set PRICECATCHER_DATA_DIR to override.
-PROJECT_ROOT = Path(os.environ.get("PRICECATCHER_DATA_DIR", Path(__file__).resolve().parent / "data")).expanduser().resolve()
-# Change only this name for an interactive run, or use prepare.py.
+# Notebooks share one active run across separate kernels. Advanced/runner paths
+# still use PRICECATCHER_DATA_DIR explicitly and never depend on this pointer.
+DATA_HOME = Path(__file__).resolve().parent / "data"
+ACTIVE_RUN_FILE = DATA_HOME / "active_run.txt"
+
+
+def find_run_folder(base):
+    """Find the latest local run by folder date, never by model score."""
+    for run in sorted((base / "runs").glob("run_*"), reverse=True):
+        if not run.is_dir():
+            continue
+        if any((run / model / filename).is_file()
+               for model in ["06_models", "06_models_reproduction"]
+               for filename in ["best_model.joblib", "model_manifest.json"]):
+            return run
+        source = run / "01_integrated"
+        if (source / "integrated_prices.parquet").is_file() and (source / "source_manifest.json").is_file():
+            return run
+    return base
+
+
+def current_run_folder():
+    """An explicit path wins; otherwise continue the run started by Notebook 01."""
+    if os.environ.get("PRICECATCHER_DATA_DIR"):
+        return Path(os.environ["PRICECATCHER_DATA_DIR"]).expanduser().resolve()
+    if ACTIVE_RUN_FILE.exists():
+        relative = Path(ACTIVE_RUN_FILE.read_text().strip())
+        if relative.is_absolute() or relative.parts[:1] != ("runs",) or ".." in relative.parts:
+            raise ValueError("Invalid data/active_run.txt. It must contain a relative runs/run_... path.")
+        return DATA_HOME / relative
+    return find_run_folder(DATA_HOME)
+
+
+PROJECT_ROOT = current_run_folder()
+# The terminal runner sets this internally; interactive notebooks use holdout.
 EXPERIMENT = os.environ.get("PRICECATCHER_EXPERIMENT", "holdout")
 START_MONTH = "2025-01"
 END_MONTH = "2026-06"
@@ -94,21 +128,6 @@ STAGE4_WEEKLY_PARQUET = STAGE4_DIR / "weekly_prices.parquet"
 MODEL_DIRS = (PROJECT_ROOT / "06_models", PROJECT_ROOT / "06_models_reproduction")
 
 
-def find_run_folder(base):
-    """Find the latest local run by folder date, never by model score."""
-    for run in sorted((base / "runs").glob("run_*"), reverse=True):
-        if not run.is_dir():
-            continue
-        if any((run / model / filename).is_file()
-               for model in ["06_models", "06_models_reproduction"]
-               for filename in ["best_model.joblib", "model_manifest.json"]):
-            return run
-        source = run / "01_integrated"
-        if (source / "integrated_prices.parquet").is_file() and (source / "source_manifest.json").is_file():
-            return run
-    return base
-
-
 def surge_mask(change_pct, threshold_pct, tolerance_pct=LABEL_TOLERANCE_PCT):
     """Count an exact threshold rise despite tiny floating-point rounding errors."""
     return (change_pct >= threshold_pct) | np.isclose(
@@ -118,20 +137,22 @@ def surge_mask(change_pct, threshold_pct, tolerance_pct=LABEL_TOLERANCE_PCT):
 def protect_frozen_preparation():
     """Keep direct notebook runs from replacing inputs of an existing model."""
     if any((folder / "best_model.joblib").exists() for folder in MODEL_DIRS):
-        raise ValueError("A frozen model exists. Reuse it in 06, or run python prepare.py --rerun-all to execute all notebooks in a separate run folder.")
+        raise ValueError("A frozen model exists in this run. To repeat 01–06, Run All in Notebook 01 to start a new run, then continue 02–06. To view this model, Run All in 06. Explicit runner paths remain protected; use --rerun-all for a separate reproduction.")
 
 
-def verify_source_snapshot():
+def verify_source_snapshot(source_dir=None):
     """Check the actual integrated data/lookups before preparing a new experiment."""
-    manifest = json.loads((STAGE1_DIR / "source_manifest.json").read_text())
+    source_dir = Path(source_dir) if source_dir is not None else STAGE1_DIR
+    manifest_path = source_dir / "source_manifest.json"
+    if not manifest_path.exists():
+        raise FileNotFoundError(f"Source snapshot missing: {manifest_path}. Run Notebook 01 first.")
+    manifest = json.loads(manifest_path.read_text())
     files = manifest.get("source_files_sha256", {})
-    required = {str(path.relative_to(STAGE1_DIR)) for path in [
-        STAGE1_COMBINED_PARQUET, LOOKUP_DIR / "lookup_item.parquet",
-        LOOKUP_DIR / "lookup_premise.parquet"]}
+    required = {"integrated_prices.parquet", "lookups/lookup_item.parquet", "lookups/lookup_premise.parquet"}
     if set(files) != required:
         raise ValueError("Source file hashes are missing/incomplete. Restore the matching source snapshot, or run 01 for a new study.")
     for relative_path, expected_hash in files.items():
-        path = STAGE1_DIR / relative_path
+        path = source_dir / relative_path
         if not path.exists():
             raise FileNotFoundError(f"Source file missing: {relative_path}. Restore the matching snapshot.")
         with path.open("rb") as handle:
@@ -142,6 +163,42 @@ def verify_source_snapshot():
     if snapshot != manifest.get("source_snapshot_sha256"):
         raise ValueError("Source snapshot ID disagrees with its file hashes. Restore the original manifest.")
     return manifest
+
+def create_run_folder(base):
+    """Create a separate reproduction and copy a verified local source if available."""
+    base = Path(base)
+    candidates = [PROJECT_ROOT / "01_integrated", base / "01_integrated"]
+    candidates += sorted((base / "runs").glob("run_*/01_integrated"), reverse=True)
+    source = next((path for path in candidates if (path / "integrated_prices.parquet").is_file()
+                   and (path / "source_manifest.json").is_file()), None)
+    if source is not None:
+        verify_source_snapshot(source)
+    stamp = datetime.now(ZoneInfo("Asia/Kuala_Lumpur")).strftime("run_%Y%m%d_%H%M%S_%f")
+    run = base / "runs" / stamp
+    run.mkdir(parents=True, exist_ok=False)
+    if source is not None:
+        shutil.copytree(source, run / "01_integrated", ignore=shutil.ignore_patterns("executed"))
+    return run
+
+
+def remember_run(run):
+    """Save a relative folder pointer; never change a model or its prepared inputs."""
+    relative = Path(run).relative_to(DATA_HOME)
+    DATA_HOME.mkdir(parents=True, exist_ok=True)
+    temporary = ACTIVE_RUN_FILE.with_suffix(".tmp")
+    temporary.write_text(str(relative))
+    temporary.replace(ACTIVE_RUN_FILE)
+
+
+def start_notebook_run():
+    """Run All in 01 starts a new run; explicit runner paths stay unchanged."""
+    if os.environ.get("PRICECATCHER_DATA_DIR"):
+        return PROJECT_ROOT
+    run = create_run_folder(DATA_HOME)
+    remember_run(run)
+    print("Started a new reproduction. Previous experiments are preserved.")
+    return run
+
 
 # Saved at every stage; changing settings requires rerunning 02–05 for this experiment.
 PREPARATION_SETTINGS = {

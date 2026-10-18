@@ -7,9 +7,6 @@ from pathlib import Path
 import subprocess
 import sys
 from importlib import reload, util
-import shutil
-from datetime import datetime
-from zoneinfo import ZoneInfo
 
 
 REPOSITORY = Path(__file__).resolve().parent
@@ -32,15 +29,11 @@ def main():
     if args.rerun_all:
         if args.refresh or args.model_mode is not None:
             parser.error("Use --rerun-all by itself; it handles preparation and model execution.")
-        base = Path(os.environ.get("PRICECATCHER_DATA_DIR", REPOSITORY / "data")).expanduser().resolve()
-        run_root = base / "runs" / datetime.now(ZoneInfo("Asia/Kuala_Lumpur")).strftime("run_%Y%m%d_%H%M%S_%f")
-        # Each new execution owns its outputs. Never overwrite an exposed run.
-        candidates = [base / "01_integrated"] + sorted((base / "runs").glob("*/01_integrated"), reverse=True)
-        source = next((path for path in candidates if (path / "integrated_prices.parquet").exists()
-                       and (path / "source_manifest.json").exists()), None)
-        run_root.mkdir(parents=True, exist_ok=False)
-        if source is not None:
-            shutil.copytree(source, run_root / "01_integrated", ignore=shutil.ignore_patterns("executed"))
+        base = Path(os.environ.get("PRICECATCHER_DATA_DIR") or REPOSITORY / "data").expanduser().resolve()
+        import pricecatcher_config as cfg
+        run_root = cfg.create_run_folder(base)
+        if not os.environ.get("PRICECATCHER_DATA_DIR"):
+            cfg.remember_run(run_root)
         print(f"New reproduction: {run_root}", flush=True)
         print("This repeats an exposed test period; it is not fresh independent validation.", flush=True)
         run_env = {**os.environ, "PRICECATCHER_DATA_DIR": str(run_root)}
@@ -120,9 +113,9 @@ def main():
         if filename.startswith("06_"):
             for cell in notebook.cells:
                 if cell.cell_type == "code":
-                    cell.source = "\n".join(f'RUN_MODE = "{args.model_mode}"' if line.startswith("RUN_MODE = ") else
-                                             "DATA_FOLDER = None" if line.startswith("DATA_FOLDER = ") else line
-                                             for line in cell.source.splitlines())
+                    cell.source = "\n".join(
+                        f'RUN_MODE = "{args.model_mode}"' if line.startswith("RUN_MODE = ") else line
+                        for line in cell.source.splitlines())
         client = NotebookClient(notebook, timeout=None, kernel_name="pricecatcher",
                                 resources={"metadata": {"path": str(REPOSITORY)}})
         # Each notebook starts with a fresh kernel. A failed cell stops the run.
