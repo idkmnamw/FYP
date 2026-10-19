@@ -1,6 +1,6 @@
 # PriceCatcher FYP
 
-Only the main workflow is kept here: notebooks **01–08**, `pricecatcher_config.py`, `prepare.py`, `requirements.txt`, this README and `.gitignore`. Generated data/models stay out of Git. No extra application modules are required.
+The main workflow is notebooks **01–08**, with optional **09** for a separate training source-quality sensitivity experiment, `pricecatcher_config.py`, `prepare.py`, `requirements.txt`, this README and `.gitignore`. Generated data/models stay out of Git. No extra application modules are required.
 
 ## Install once
 
@@ -64,6 +64,7 @@ The supplementary source-quality audit is optional. Missing or mismatched weekly
 | 06 | Compare models, freeze selection/cutoff and report performance/limitations with supplementary paired week-bootstrap intervals |
 | 07 | Fit/reuse a training-only Isolation Forest and export separate anomaly scores, group summaries and review candidates |
 | 08 | Verify frozen forecasts/anomalies, precompute SHAP and save bounded explanation caches plus all supported latest dashboard rows |
+| 09 (optional) | Exclude shortlisted suspected training records in a separate validation-only sensitivity comparison; preserve the main model/test |
 
 ## Labels and research limits
 
@@ -108,3 +109,13 @@ The generated `experiments/holdout/03_cleaned/training_source_context.csv` combi
 Review the table in your research notes, citing case IDs and independent evidence. Correct only confirmed errors in a separate experiment; retain unresolved values. This export is regenerated on rerun, so do not store decisions by editing it. No review outcome is automatically applied. Cached real data is required locally; saved notebook previews alone cannot confirm individual source records.
 
 The same review export now includes an investigation priority and monthly source URL. Priority 1 highlights tenfold-or-larger deviations from both nearby (within seven days), similar neighbours; priority 2 highlights a large deviation from either neighbour. These are retrospective review aids, not confirmed errors or automatic exclusions. Use source/unit evidence to investigate the shortlist and include lower-priority cases when assessing missed issues. Fetching the official source confirms what was recorded, not necessarily what the true price should have been. Changes to cleaning require a separately evaluated experiment.
+
+## Optional Notebook 09: test sensitivity to suspicious training prices
+
+After the final review cell in 03 has produced the prioritised table, Run All in `09_source_quality_sensitivity.ipynb`. There are no mode/path changes and no need to rerun 01–08. The table's additional priority-1 cases (58 in the reviewed real run) are suspected, not confirmed errors. This exploratory analysis excludes them only from training, reconstructs training aggregates/features/eligibility/labels, and clones the selected model with its existing parameters. Before excluding anything, the reconstruction must match the frozen original training data.
+
+Both versions use exactly the original validation features, rows, labels and original score cutoff. Validation history is intentionally unchanged to isolate the training intervention. No new cutoff, hyperparameter search, early-fold exclusions, test data access or dashboard replacement occurs. The priority rule uses retrospective neighbouring training observations, so it is not a deployable online cleaning rule. Report changes to training support/labels together with metrics, and do not tune the review policy repeatedly against validation performance. Test-period evidence remains exposed; this is not independent confirmation.
+
+Results stay in `data/runs/<active-run>/09_source_quality_sensitivity/<fingerprint>/`. The fingerprint records code, model, input and package provenance; a matching completed cache reuses results without fitting. Seven artifacts include the supplementary model, excluded-record evidence, training-impact table, validation metrics/group metrics/predictions and manifest. Main experiment files remain unchanged. If original inputs differ, restore the matching originals; if code or reviewed evidence changes, a separate fingerprint preserves the earlier sensitivity results.
+
+Run this on the Mac with its cached daily data and matching model environment. Cloud synthetic checks do not establish real-data results. Share `training_impact.csv`, `validation_comparison.csv` and `validation_group_comparison.csv` for interpretation before deciding whether another experiment is warranted.
