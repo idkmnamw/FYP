@@ -1,6 +1,6 @@
 # PriceCatcher FYP
 
-The main workflow is notebooks **01–08**, with optional **09–12** for research experiments and a historical-data audit, `pricecatcher_config.py`, `prepare.py`, `requirements.txt`, this README and `.gitignore`. Generated data/models stay out of Git. No extra application modules are required.
+The main workflow is notebooks **01–08**, with optional **09–13** for research experiments, a historical-data audit and future-evaluation registration, `pricecatcher_config.py`, `prepare.py`, `requirements.txt`, this README and `.gitignore`. Generated data/models stay out of Git. No extra application modules are required.
 
 ## Install once
 
@@ -68,6 +68,7 @@ The supplementary source-quality audit is optional. Missing or mismatched weekly
 | 10 (optional) | Compare original and matched-shop history features on the three 2025 expanding folds, preserving labels, rows and the main experiment |
 | 11 (optional) | Audit 2024 file availability, core schema and bounded samples before considering longer training history |
 | 12 (optional) | Integrate the audited 2024 basket and compare longer training history on unchanged validation data |
+| 13 (optional) | Freeze both model copies and a November evaluation protocol without reading later outcomes |
 
 ## Labels and research limits
 
@@ -150,3 +151,11 @@ The comparison keeps the original 2025 item eligibility, retail filtering, selec
 The source cache lives under `data/12_longer_history/2024_source/<source-id>/`. Experiment results live under the active run's `12_longer_history_experiment/<fingerprint>/`; matching completed runs reuse data/results without downloads or fitting. Eight result artifacts contain the supplementary model, training totals/group support, historical cleaning counts, validation metrics/group metrics/predictions and manifest. Original models, earlier results, dashboard inputs and the active-run pointer stay unchanged. No prepared test file is accessed or cutoff retuned.
 
 Share `training_comparison.csv`, `training_group_support.csv`, `historical_cleaning.csv`, `validation_comparison.csv` and `validation_group_comparison.csv`. More history may help or hurt. This is post-hoc exploratory validation, not fresh confirmation; do not automatically replace the main model or tune repeatedly against these results. Historical metadata and source quality, changing regimes and uncalibrated scores remain limitations. Independent confirmation requires an untouched later period after freezing the proposed policy.
+
+## Optional Notebook 13: reserve a future comparison before the December deadline
+
+Exposure to July–September 2026 outcomes is uncertain, so do not describe that period as independently untouched. Run All in `13_register_future_evaluation.ipynb` before 1 November 2026 to register the original model and the latest completed compatible 12 candidate. The selection is by completion time, not metric ranking; both identities/hashes are printed. No price data, labels, predictions, fitting, source download or metrics are accessed. The active run and all original artifacts are preserved.
+
+Three files stay in `13_registered_future_evaluation/2026-11-02_2026-11-29/`: two verified model copies and `registration.json`. The registration fixes the original cutoff, model/settings/eligibility and a preliminary four-week outcome window of 2–29 November. Forecast-origin weeks start 26 October through 16 November; their closing dates are 1, 8, 15 and 22 November. Earliest outcome evaluation is 30 November, once complete source records are available. First-time late registration is rejected; repeated execution verifies the original registration without replacing it.
+
+Registration is preparation, not an evaluation implementation or a new performance result. An evaluation stage must verify the frozen copies, preserve the declared policy, audit source/coverage and score both on identical supported rows. Four weeks are short and rare-food-group results may be unevaluable. The registered plan does not prove live predictions or point-in-time publisher availability; later source revisions remain a limitation. Build the dashboard meanwhile and report the 12 improvement as exploratory evidence until a valid later comparison is completed.
