@@ -1,6 +1,6 @@
 # PriceCatcher FYP
 
-The main workflow is notebooks **01–08**, with optional **09–11** for source-quality/feature experiments and a historical-data audit, `pricecatcher_config.py`, `prepare.py`, `requirements.txt`, this README and `.gitignore`. Generated data/models stay out of Git. No extra application modules are required.
+The main workflow is notebooks **01–08**, with optional **09–12** for research experiments and a historical-data audit, `pricecatcher_config.py`, `prepare.py`, `requirements.txt`, this README and `.gitignore`. Generated data/models stay out of Git. No extra application modules are required.
 
 ## Install once
 
@@ -67,6 +67,7 @@ The supplementary source-quality audit is optional. Missing or mismatched weekly
 | 09 (optional) | Exclude shortlisted suspected training records in a separate validation-only sensitivity comparison; preserve the main model/test |
 | 10 (optional) | Compare original and matched-shop history features on the three 2025 expanding folds, preserving labels, rows and the main experiment |
 | 11 (optional) | Audit 2024 file availability, core schema and bounded samples before considering longer training history |
+| 12 (optional) | Integrate the audited 2024 basket and compare longer training history on unchanged validation data |
 
 ## Labels and research limits
 
@@ -139,3 +140,13 @@ Run All in `11_historical_data_audit.ipynb` on the Mac using the existing projec
 Three small reports are regenerated under `data/11_historical_audit/`: `monthly_availability.csv`, `selected_item_sample.csv` and `audit_summary.json`. No raw monthly files are saved. Share these reports before extending 01's source window. A zero sample count does not establish that an item is absent; full-year coverage and historical units/geography are not verified. Available cached current-study lookups are checked and used only as reference mappings.
 
 This cloud's official-storage access is blocked by its proxy (403), so actual 2024 compatibility remains unassessed here. The audit stops further requests after a 403 rather than repeatedly retrying blocked URLs. The Mac may have direct access. If evidence is promising, the next research step is a separate longer-history comparison with training-only eligibility/preprocessing and fixed common evaluation rows; a positive audit alone is not evidence of model improvement.
+
+## Optional Notebook 12: compare an extra year of history
+
+After successful 11, Run All in `12_longer_history_experiment.ipynb` on the Mac. Do not change 01's dates or rerun 01–10. The first execution downloads all 12 audited monthly versions using their ETags and sizes, applies the original unit conversion/lookup contracts, and caches only the selected 2024 basket with raw-month hashes. Full-year integration stops on unknown/blank metadata, duplicate keys, changed source identities or incomplete downloads. The current frozen lookup is a provisional historical interpretation, not independent verification of historical units or shop attributes.
+
+The comparison keeps the original 2025 item eligibility, retail filtering, selected model settings, target, original cutoff and validation inputs fixed. Invalid 2024 prices are removed by the same finite-positive rule; other suspicious prices remain. Original 2025 conservative exclusions stay as prepared; the later 09 shortlist is not applied. Training features/labels/eligibility are rebuilt using 2024–2025. The original-history reconstruction must match the frozen original, and all original training rows/labels must survive the extension. Fitted preprocessing and balanced weighting use only the new training data. Keeping eligibility fixed isolates history in the original basket rather than optimising all preparation policies.
+
+The source cache lives under `data/12_longer_history/2024_source/<source-id>/`. Experiment results live under the active run's `12_longer_history_experiment/<fingerprint>/`; matching completed runs reuse data/results without downloads or fitting. Eight result artifacts contain the supplementary model, training totals/group support, historical cleaning counts, validation metrics/group metrics/predictions and manifest. Original models, earlier results, dashboard inputs and the active-run pointer stay unchanged. No prepared test file is accessed or cutoff retuned.
+
+Share `training_comparison.csv`, `training_group_support.csv`, `historical_cleaning.csv`, `validation_comparison.csv` and `validation_group_comparison.csv`. More history may help or hurt. This is post-hoc exploratory validation, not fresh confirmation; do not automatically replace the main model or tune repeatedly against these results. Historical metadata and source quality, changing regimes and uncalibrated scores remain limitations. Independent confirmation requires an untouched later period after freezing the proposed policy.
