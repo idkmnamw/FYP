@@ -1,6 +1,6 @@
 # PriceCatcher FYP
 
-The main workflow is notebooks **01–08**, with optional **09** for a separate training source-quality sensitivity experiment, `pricecatcher_config.py`, `prepare.py`, `requirements.txt`, this README and `.gitignore`. Generated data/models stay out of Git. No extra application modules are required.
+The main workflow is notebooks **01–08**, with optional **09–10** for separate source-quality and matched-shop feature experiments, `pricecatcher_config.py`, `prepare.py`, `requirements.txt`, this README and `.gitignore`. Generated data/models stay out of Git. No extra application modules are required.
 
 ## Install once
 
@@ -65,6 +65,7 @@ The supplementary source-quality audit is optional. Missing or mismatched weekly
 | 07 | Fit/reuse a training-only Isolation Forest and export separate anomaly scores, group summaries and review candidates |
 | 08 | Verify frozen forecasts/anomalies, precompute SHAP and save bounded explanation caches plus all supported latest dashboard rows |
 | 09 (optional) | Exclude shortlisted suspected training records in a separate validation-only sensitivity comparison; preserve the main model/test |
+| 10 (optional) | Compare original and matched-shop history features on the three 2025 expanding folds, preserving labels, rows and the main experiment |
 
 ## Labels and research limits
 
@@ -119,3 +120,13 @@ Both versions use exactly the original validation features, rows, labels and ori
 Results stay in `data/runs/<active-run>/09_source_quality_sensitivity/<fingerprint>/`. The fingerprint records code, model, input and package provenance; a matching completed cache reuses results without fitting. Seven artifacts include the supplementary model, excluded-record evidence, training-impact table, validation metrics/group metrics/predictions and manifest. Main experiment files remain unchanged. If original inputs differ, restore the matching originals; if code or reviewed evidence changes, a separate fingerprint preserves the earlier sensitivity results.
 
 Run this on the Mac with its cached daily data and matching model environment. Cloud synthetic checks do not establish real-data results. Share `training_impact.csv`, `validation_comparison.csv` and `validation_group_comparison.csv` for interpretation before deciding whether another experiment is warranted.
+
+## Optional Notebook 10: matched-shop feature experiment
+
+Run All in `10_matched_shop_feature_experiment.ipynb` after completed 06. Notebook 09 is not a prerequisite. This compares the selected estimator's original features against two additional features: current/previous-week price change on common shops, and common-shop count. Every fold uses its own original daily cleaning/item eligibility, exact-week matches, training-only preprocessing and identical original labels/validation rows. Missing matches are retained, not treated as zero price change. No retrospective 09 exclusions, new cutoff or hyperparameter search is applied. The fixed fold cutoff is 0.5, matching the original fold comparison, not the final holdout cutoff.
+
+The original-feature fold AP must reproduce the saved 06 result before a comparison is accepted. The current daily aggregates must also match the frozen price/coverage features. This requires the exact source/preparation and package versions from the main run; do not regenerate frozen inputs to bypass a mismatch. No prepared test file or 2026 holdout evaluation is accessed. Main models, dashboard inputs, labels and prior results stay unchanged.
+
+A matching completed cache reopens without fitting. Six generated artifacts stay under `10_matched_shop_experiment/<fingerprint>/`: fold comparison, fold summary, food-group comparison, matched-shop coverage, validation predictions and a manifest. No model is deployed or saved by this development experiment. Share the first four CSVs for interpretation.
+
+These are reused development folds, and the model settings were already selected using them. Any gain is exploratory, not fresh validation or proof of superior test performance. Report individual folds, group effects and missing-match coverage; prefer the simpler model if benefits are negligible or inconsistent. Future independent claims require an untouched later period and a frozen proposed policy. Source/unit uncertainty, publication delays, uncalibrated scores and user usefulness remain separate issues.
