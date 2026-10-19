@@ -29,6 +29,10 @@ research/                           optional studies 09–13
 
 Only two Python files support the notebooks. Generated data, models and caches stay under ignored `data/`; none need committing to Git. Keep completed experiment folders for the report.
 
+Keep the eight main notebooks, the two Python files, `requirements.txt`, `.gitignore` and this README. The five `research/` notebooks preserve the comparisons and audit behind the report; they are optional to run. There are no duplicate source files to delete. `pricecatcher_config.py` holds shared rules, and 06 uses `prepare.py` to prepare missing validation folds.
+
+For local housekeeping, `.ipynb_checkpoints/` and `__pycache__/` can be removed when notebooks are stopped; Python/Jupyter recreate them. Keep `.venv/` for your working kernel. Keep completed `data/` runs and source snapshots until they are backed up and no longer needed for the report; deleting them can break model verification or require downloading the data again.
+
 ## Install and choose the kernel
 
 From the FYP folder:
@@ -112,6 +116,25 @@ Study 11 saves small audit reports under `data/11_historical_audit/`. Study 12 r
 To inspect suspicious prices in a completed run, run **only the final cell of 03**. Its `training_source_context.csv` is regenerated evidence, not an editable decision log. Priorities are investigation aids; they do not confirm errors or replacement prices. Keep research decisions and independent evidence in report notes.
 
 Study 13 reserves four outcome weeks, 2–29 November 2026, with earliest evaluation 30 November subject to full data availability. It is optional and should not delay dashboard work or the December report. July–September exposure is uncertain, so do not claim it is an untouched test. Registration alone does not implement evaluation or prove live forecasts.
+
+## Current saved results
+
+These are the saved real-data displays committed with the notebooks, not a new retraining. The 2025 reference results below are the latest saved reproduction of an already exposed test period.
+
+| Evidence | Reference model | Comparison |
+|---|---:|---:|
+| 06: April–June test average precision | 0.336 | Current-change baseline: 0.151 |
+| 06: April–June test F1 | 0.414 | Current-change baseline: 0.225 |
+| 12: January–March validation average precision | Original: 0.223 | Longer history: 0.330 |
+| 12: January–March validation F1 | Original: 0.332 | Longer history: 0.354 |
+
+The original test has **3,985 correct alerts, 8,131 false alerts and 3,140 missed surges**. Its precision is 32.9% and recall 55.9%. It beats the supplementary food-group prevalence baseline too (test AP 0.225; F1 0.367), but still needs human review.
+
+Longer history improves validation recall from 65.7% to 69.1%, with 2,702 correct alerts, 8,659 false alerts and 1,210 missed surges. Precision is only 23.8%: **76.2% of its validation alerts are false**. Vegetables account for 2,686 of its 2,702 correct alerts; eggs and flour deteriorate. Sugar has no positive training/validation examples, and cooking-oil positives remain too scarce for dependable conclusions. These validation results cannot be compared directly with the original model's test scores to rank the models.
+
+Coverage remains a practical limitation: 05 reports 3,271 source series with no usable modelling rows. Its latest supported snapshot has **5,343 rows for the week starting 22 June 2026**. It is historical, not a current October/November forecast. The separate 07 detector flags 45 of those rows; without anomaly ground truth, this is a review shortlist, not measured detection accuracy. Unusual source prices remain unresolved, not verified errors.
+
+The revised 08 has no fresh real-data outputs committed yet. Run All locally to verify the selected checkpoint, SHAP additivity and exported cache before connecting an app. None of these results establishes stakeholder adoption, affordability improvement or reliable coverage across every food group.
 
 ## Method and interpretation
 
