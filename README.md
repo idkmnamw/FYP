@@ -1,6 +1,6 @@
 # PriceCatcher FYP
 
-The main workflow is notebooks **01–08**, with optional **09–10** for separate source-quality and matched-shop feature experiments, `pricecatcher_config.py`, `prepare.py`, `requirements.txt`, this README and `.gitignore`. Generated data/models stay out of Git. No extra application modules are required.
+The main workflow is notebooks **01–08**, with optional **09–11** for source-quality/feature experiments and a historical-data audit, `pricecatcher_config.py`, `prepare.py`, `requirements.txt`, this README and `.gitignore`. Generated data/models stay out of Git. No extra application modules are required.
 
 ## Install once
 
@@ -66,6 +66,7 @@ The supplementary source-quality audit is optional. Missing or mismatched weekly
 | 08 | Verify frozen forecasts/anomalies, precompute SHAP and save bounded explanation caches plus all supported latest dashboard rows |
 | 09 (optional) | Exclude shortlisted suspected training records in a separate validation-only sensitivity comparison; preserve the main model/test |
 | 10 (optional) | Compare original and matched-shop history features on the three 2025 expanding folds, preserving labels, rows and the main experiment |
+| 11 (optional) | Audit 2024 file availability, core schema and bounded samples before considering longer training history |
 
 ## Labels and research limits
 
@@ -130,3 +131,11 @@ The original-feature fold AP must reproduce the saved 06 result before a compari
 A matching completed cache reopens without fitting. Six generated artifacts stay under `10_matched_shop_experiment/<fingerprint>/`: fold comparison, fold summary, food-group comparison, matched-shop coverage, validation predictions and a manifest. No model is deployed or saved by this development experiment. Share the first four CSVs for interpretation.
 
 These are reused development folds, and the model settings were already selected using them. Any gain is exploratory, not fresh validation or proof of superior test performance. Report individual folds, group effects and missing-match coverage; prefer the simpler model if benefits are negligible or inconsistent. Future independent claims require an untouched later period and a frozen proposed policy. Source/unit uncertainty, publication delays, uncalibrated scores and user usefulness remain separate issues.
+
+## Optional Notebook 11: check 2024 data before downloading the year
+
+Run All in `11_historical_data_audit.ipynb` on the Mac using the existing project kernel. It does not run earlier notebooks, change the training scope, alter models or read the prepared test file. It checks the 12 official monthly URLs and core Parquet schemas, then samples first/middle/last row groups from January, July and December. Standard-library HTTP range reads and the existing PyArrow dependency cap data payload at 33 MiB for the audit. A server that ignores ranges is rejected instead of triggering a full-file download. Missing files, blocked access, incomplete samples and unsupported types stay explicit.
+
+Three small reports are regenerated under `data/11_historical_audit/`: `monthly_availability.csv`, `selected_item_sample.csv` and `audit_summary.json`. No raw monthly files are saved. Share these reports before extending 01's source window. A zero sample count does not establish that an item is absent; full-year coverage and historical units/geography are not verified. Available cached current-study lookups are checked and used only as reference mappings.
+
+This cloud's official-storage access is blocked by its proxy (403), so actual 2024 compatibility remains unassessed here. The audit stops further requests after a 403 rather than repeatedly retrying blocked URLs. The Mac may have direct access. If evidence is promising, the next research step is a separate longer-history comparison with training-only eligibility/preprocessing and fixed common evaluation rows; a positive audit alone is not evidence of model improvement.
