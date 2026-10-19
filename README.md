@@ -1,10 +1,10 @@
 # PriceCatcher FYP
 
-A readable pipeline for Malaysian local weekly prices, next-week surge prediction, anomaly review and precomputed explanations. The dashboard app is the next stage; it is not implemented yet.
+A readable pipeline for Malaysian local weekly prices, next-week surge prediction, anomaly review and precomputed explanations. A single-file Streamlit dashboard displays the saved forecasts, historical prices and explanations without training models.
 
 ## Start here
 
-**Already completed the longer-history experiment?** Pull the latest code and Run All in **08 only** using your project kernel. It exports fresh scores and SHAP for that checkpoint, preserving the original results. No rerun of 01–07 or the research studies is needed.
+**Already completed Notebook 08?** Pull the latest code, install the updated requirements, and start the dashboard using the command below. No notebook rerun is needed for the completed longer-history export. If `08_dashboard/dashboard_manifest.json` is missing, Run All in **08 only** using your project kernel first.
 
 **Starting a new reproduction?** Run **01 → 06**, then **07 → 08**. Notebook 01 starts a separate run; the others continue it automatically. For a longer-history candidate, run research **11 → 12** once after 06, then rerun 08. Studies 09, 10 and 13 are optional evidence, not prerequisites.
 
@@ -21,15 +21,16 @@ Do not start 01 merely to reopen saved results. Do not run preparation and model
 06_model_training_and_evaluation.ipynb
 07_anomaly_detection.ipynb
 08_shap_and_dashboard_inputs.ipynb
+app.py                              read-only Streamlit dashboard
 pricecatcher_config.py              shared settings and run locations
 prepare.py                          preparation runner used internally by 06
 requirements.txt
 research/                           optional studies 09–13
 ```
 
-Only two Python files support the notebooks. Generated data, models and caches stay under ignored `data/`; none need committing to Git. Keep completed experiment folders for the report.
+Two Python files support the notebooks; the third, `app.py`, is the dashboard. Generated data, models and caches stay under ignored `data/`; none need committing to Git. Keep completed experiment folders for the report.
 
-Keep the eight main notebooks, the two Python files, `requirements.txt`, `.gitignore` and this README. The five `research/` notebooks preserve the comparisons and audit behind the report; they are optional to run. There are no duplicate source files to delete. `pricecatcher_config.py` holds shared rules, and 06 uses `prepare.py` to prepare missing validation folds.
+Keep the eight main notebooks, the three Python files, `requirements.txt`, `.gitignore` and this README. The five `research/` notebooks preserve the comparisons and audit behind the report; they are optional to run. There are no duplicate source files to delete. `pricecatcher_config.py` holds shared rules, and 06 uses `prepare.py` to prepare missing validation folds.
 
 For local housekeeping, `.ipynb_checkpoints/` and `__pycache__/` can be removed when notebooks are stopped; Python/Jupyter recreate them. Keep `.venv/` for your working kernel. Keep completed `data/` runs and source snapshots until they are backed up and no longer needed for the report; deleting them can break model verification or require downloading the data again.
 
@@ -97,7 +98,7 @@ The historical reference is not a representative sample of the longer model's fu
 
 The old `08_explanations/` original-model cache is preserved. New exports use `08_dashboard/<model-hash>/`; no old model, original prediction table or test result is overwritten. The cache manifest verifies provenance/hashes; the stable entry point is published only after output checks pass.
 
-**Important:** the original model's April–June 2026 test scores are not test scores for the longer-history candidate. Its January–March 2026 improvement remains exploratory validation evidence; independent test performance is unconfirmed. Saved 08 displays were cleared because the handoff changed—Run All locally for current outputs.
+**Important:** the original model's April–June 2026 test scores are not test scores for the longer-history candidate. Its January–March 2026 improvement remains exploratory validation evidence; independent test performance is unconfirmed. The latest saved 08 execution verifies the longer-history export, including additive explanations and 200 cached latest cases.
 
 ## Research evidence: optional, not the everyday workflow
 
@@ -134,7 +135,7 @@ Longer history improves validation recall from 65.7% to 69.1%, with 2,702 correc
 
 Coverage remains a practical limitation: 05 reports 3,271 source series with no usable modelling rows. Its latest supported snapshot has **5,343 rows for the week starting 22 June 2026**. It is historical, not a current October/November forecast. The separate 07 detector flags 45 of those rows; without anomaly ground truth, this is a review shortlist, not measured detection accuracy. Unusual source prices remain unresolved, not verified errors.
 
-The revised 08 has no fresh real-data outputs committed yet. Run All locally to verify the selected checkpoint, SHAP additivity and exported cache before connecting an app. None of these results establishes stakeholder adoption, affordability improvement or reliable coverage across every food group.
+The latest real-data 08 outputs are committed: the longer-history checkpoint was selected, SHAP additivity passed and the dashboard entry point was written. The app reads that export and verifies its cache and frozen historical inputs before displaying it. None of these results establishes stakeholder adoption, affordability improvement or reliable coverage across every food group.
 
 ## Method and interpretation
 
@@ -152,6 +153,31 @@ python prepare.py --rerun-all
 
 This creates a separate reproduction and runs **01–06** with fresh kernels; 07, research studies and 08 remain interactive. Manual Run All is supported. `prepare.py` stays because 06 calls it for missing folds.
 
-## Next stage
+## Run the dashboard
 
-Build one Streamlit `app.py` using the 08 manifest and cached tables; weekly trends/coverage will also need validated prepared history. Do not train models or calculate SHAP while users browse. Evaluate correctness, loading time, filter behaviour and whether users understand alerts, dates and insufficient coverage. No further model experiment is required to finish the prototype.
+From your FYP folder with `.venv` activated:
+
+```bash
+python -m pip install -r requirements.txt
+python -m streamlit run app.py
+```
+
+Use the local address printed by Streamlit. Stop the app with Ctrl+C. No API keys, database, model training or live downloads are needed. Generated data stays local; Git does not contain the data required to run the app on another machine.
+
+The app follows the same `data/active_run.txt` as the notebooks (or an explicit `PRICECATCHER_DATA_DIR`). It never searches older completed runs to hide an unfinished active run. Missing/changed files produce an actionable message instead of substituting forecasts. It verifies the 08 entry point, cache hashes, model/version consistency, dates, alerts and explanation mapping. Original train/validation/test parquet hashes must match the 08 provenance before history is loaded; only identifier, price and coverage columns are read, not outcome labels. No model is loaded or fitted. Streamlit caches verified data across filter changes and rechecks when relevant file metadata changes.
+
+Three tabs keep the workflow small:
+
+- **Review list:** state/district/food/item/shop filters, frozen-threshold alerts, separate unusual-pattern flags, scores and CSV download. These are investigation priorities, not verified event probabilities.
+- **Price history & explanations:** one local series at a time, RM and unit, missing weeks left blank, current record/shop/day counts and cached SHAP when available. The default is the highest-score supported series within your filters. Historical locations without a latest prediction explicitly show no supported forecast.
+- **Model & coverage:** the selected model's own validation evidence, false-alert rate, training dates, cutoff, filtered support counts and limitations. No original-model test scores are attributed to the longer-history candidate.
+
+History comes from eligible **original 2025–June 2026 modelling rows** plus the latest snapshot, not all raw source observations or the added 2024 training data. Boundary, sparse and excluded weeks can appear as gaps. Areas absent from these inputs cannot be assessed. The app is a historical demonstration; the forecast period shown is 29 June–5 July 2026, not a live warning. No filter changes the frozen model cutoff or the 10% target.
+
+Do not delete `data/` or rerun 01 just to open the app. To switch runs intentionally, complete the new run through 08 first. More explanations or newer price data require a separate, verified offline preparation/export step; the dashboard does not generate either while users browse.
+
+## Evaluate the dashboard before writing final claims
+
+Check representative items and locations against Notebook 08, including the forecast dates, units, scores, alert cutoff, anomaly flags and whether SHAP is available. Check a historical series without a latest forecast; it must not substitute an older prediction. Measure application/browser loading and filter response separately from the notebook's file-read timing.
+
+Ask suitable users to find a local item, interpret its price chart and alert, distinguish an anomaly flag from a forecast, and recognise a missing explanation or unsupported forecast. Record task completion, response times, misunderstandings and improvements. User comprehension/usefulness testing does not establish reduced prices or affordability benefits. Keep the original model's test results and the longer model's exploratory validation evidence separate in the report. No further model experiment is required to implement the prototype.

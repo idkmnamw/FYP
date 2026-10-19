@@ -12,3 +12,4 @@ xgboost-cpu>=2.1,<4; platform_system == "Linux"
 xgboost>=2.1,<4; platform_system != "Linux"
 lightgbm>=4.3,<5
 shap>=0.50,<0.55
+streamlit>=1.50,<2
