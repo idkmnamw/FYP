@@ -1,4 +1,4 @@
-"""Shared settings for Notebooks 01–06. Keep this file beside the notebooks."""
+"""Shared settings and run locations. Keep this file beside Notebooks 01–08."""
 from pathlib import Path
 from datetime import date, datetime
 import hashlib
@@ -223,3 +223,30 @@ PREPARATION_SETTINGS = {
     "aggregation": "median of daily observations; equal-premise comparator only",
     "imputation": "none in preparation; fit feature imputation within each model training fold",
 }
+
+
+def notebook_path(filename):
+    """Locate a main or research notebook without depending on the kernel folder."""
+    repository = Path(__file__).resolve().parent
+    for path in [repository / filename, repository / "research" / filename]:
+        if path.is_file():
+            return path
+    raise FileNotFoundError(f"Notebook missing from the FYP project: {filename}")
+
+
+def latest_longer_history(model_dir):
+    """Find the latest completed compatible 12 run by completion time, never score."""
+    model_dir = Path(model_dir)
+    original = json.loads((model_dir / "model_manifest.json").read_text())
+    selection = json.loads((model_dir / "selection.json").read_text())
+    model_key = str((model_dir / "best_model.joblib").resolve())
+    candidates = []
+    for path in (PROJECT_ROOT / "12_longer_history_experiment").glob("*/experiment_manifest.json"):
+        record = json.loads(path.read_text())
+        protocol = record["protocol"]
+        if (protocol["candidate"] == selection["candidate"]
+                and protocol["cutoff"] == selection["score_cutoff"]
+                and protocol["input_sha256"].get(model_key) == original["model_sha256"]
+                and record.get("prepared_test_accessed") is False):
+            candidates.append(path)
+    return max(candidates, key=lambda path: path.stat().st_mtime_ns).parent if candidates else None
