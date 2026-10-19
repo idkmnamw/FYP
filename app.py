@@ -320,7 +320,7 @@ def main():
     st.set_page_config(page_title="Price Watch Malaysia", page_icon="🇲🇾", layout="wide")
     st.markdown("""<style>
         .block-container {max-width: 1400px; padding-top: 2rem;}
-        [data-testid="stMetric"] {background: #f0f8f8; padding: 1rem; border-radius: .6rem; color: #153d42;}
+        [data-testid="stMetric"] {background: rgba(8, 127, 140, .08); padding: 1rem; border-radius: .6rem; border: 1px solid rgba(128, 128, 128, .25);}
         h1, h2, h3 {letter-spacing: -.025em;}
         </style>""", unsafe_allow_html=True)
     st.title("Price Watch Malaysia")
