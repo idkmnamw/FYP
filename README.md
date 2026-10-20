@@ -171,13 +171,19 @@ HargaLens combines **harga** (price) and **lens** (a clearer view). The original
 
 Three tabs keep the workflow small:
 
-- **Overview:** resettable state/district/food/item/shop filters, food-group alert-count chart, frozen-threshold alerts, separate unusual-pattern flags, scores and CSV download. These are investigation priorities, not verified event probabilities.
+- **Overview:** HargaLens Spotlight with three highest-score supported cases, a selectable price story and downloadable evidence brief; resettable state/district/food/item/shop filters, food-group alert-count chart, frozen-threshold alerts, separate unusual-pattern flags, scores and CSV download. These are investigation priorities, not verified event probabilities.
 - **Explore prices:** one local series at a time, 12-week/26-week/full-history chart views, RM and unit, missing weeks left blank, current record/shop/day counts and cached SHAP when available. The default is the highest-score supported series within your filters. Historical locations without a latest prediction explicitly show no supported forecast.
 - **About the model:** the selected model's own validation evidence, false-alert rate, training dates, cutoff, filtered support counts and limitations. No original-model test scores are attributed to the longer-history candidate.
 
 History comes from eligible **original 2025–June 2026 modelling rows** plus the latest snapshot, not all raw source observations or the added 2024 training data. Boundary, sparse and excluded weeks can appear as gaps. Areas absent from these inputs cannot be assessed. The app is a historical demonstration; the forecast period shown is 29 June–5 July 2026, not a live warning. No filter changes the frozen model cutoff or the 10% target.
 
 Do not delete `data/` or rerun 01 just to open the app. To switch runs intentionally, complete the new run through 08 first. More explanations or newer price data require a separate, verified offline preparation/export step; the dashboard does not generate either while users browse.
+
+### HargaLens Spotlight
+
+Spotlight connects a saved forecast with its local context. The three highest-scoring supported cases in the current filters each have a **Read this price story** button. The selected story shows the observed price/unit, exact forecast period, separate anomaly status, shop/record/day counts, 12 calendar weeks of eligible historical prices and the strongest cached SHAP contributions. Missing explanations are explicit. Scores and alert cutoffs do not change when a story is selected. If every case is below cutoff, Spotlight says so; the shortlist is not presented as confirmed surges.
+
+**Download brief · [item] · [district]** saves a standalone HTML document, readable without the app. It carries the dates, original checkpoint identity, frozen cutoff, observation support, selected model's evidence status/validation precision, explanation availability and recent price table. Open it in a browser and print to save a PDF. Dynamic text is escaped. No AI text-generation service, new model, future price estimates, live data or extra dependency is involved. This is a usability feature that makes the existing evidence easier to inspect and share; it does not establish scientific novelty or improved forecasting performance.
 
 ## Evaluate the dashboard before writing final claims
 

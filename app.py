@@ -2,6 +2,7 @@
 import hashlib
 import json
 import os
+from html import escape
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -193,6 +194,97 @@ def group_overview(latest):
                  x_label="Food group", y_label="Number of local price series", horizontal=True,
                  color=["#d98c28", "#2795a0"], stack=True, height=120 + 28 * len(counts))
     st.caption("Amber = a next-week alert to investigate. Teal = below the alert cutoff, which still carries uncertainty. Counts reflect your filters and available observations, not each group's population risk.")
+
+
+def spotlight(history, latest, explanations, model):
+    """Turn fixed saved results into a readable case story and portable brief."""
+    if latest.empty:
+        return
+    st.subheader("HargaLens Spotlight")
+    st.caption("Follow the evidence behind a review case. These are the three highest-scoring supported cases within your filters, not confirmed future surges.")
+    candidates = latest.sort_values(["model_score", "forecast_id"], ascending=[False, True]).head(3)
+    if st.session_state.get("spotlight_id") not in candidates.forecast_id.tolist():
+        st.session_state["spotlight_id"] = candidates.iloc[0].forecast_id
+
+    def choose_story(forecast_id):
+        st.session_state["spotlight_id"] = forecast_id
+
+    cards = st.columns(len(candidates))
+    for card, (_, row) in zip(cards, candidates.iterrows()):
+        with card.container(border=True):
+            st.markdown(f"**{row['item']}**")
+            st.caption(f"{row.state} / {row.district} · {row.premise_type}")
+            st.metric("Weekly median", f"RM {row.weekly_median_price:.2f}", help=f"Per {row.unit}; observed price, not a predicted next-week price.")
+            st.caption(f"Review score {row.model_score:.3f} · {'Next-week review alert' if row.predicted_surge else 'Below alert cutoff'}")
+            st.button("Read this price story", key=f"story_{row.forecast_id}", width="stretch",
+                      type="primary" if row.forecast_id == st.session_state["spotlight_id"] else "secondary",
+                      on_click=choose_story, args=(row.forecast_id,))
+
+    row = candidates.loc[candidates.forecast_id.eq(st.session_state["spotlight_id"])].iloc[0]
+    week = pd.Timestamp(row.week_start)
+    forecast_period = date_span(week + pd.Timedelta(days=7), row.next_week_end)
+    status = "Review next week" if row.predicted_surge else "Below the alert cutoff"
+    pattern = "Flagged as unusual" if row.is_anomaly else "Not flagged as unusual"
+    headline = f"{row['item']} · {row.state} / {row.district}"
+    coverage = f"{int(row.record_count)} price records from {int(row.premise_count)} shops across {int(row.observed_days)} observed days"
+    st.markdown(f"#### Price story: {headline}")
+    st.write(f"The observed weekly median was **RM {row.weekly_median_price:.2f} per {row.unit}**. "
+             f"The saved model marks this case **{status.lower()}** for **{forecast_period}**. "
+             f"The separate pattern detector says **{pattern.lower()}**.")
+    st.caption(f"Observation support: {coverage}. Shop composition and sparse observations can affect local medians.")
+    mask = pd.Series(True, index=history.index)
+    for key in SERIES:
+        mask &= history[key].eq(row[key])
+    calendar = pd.date_range(week - pd.Timedelta(weeks=11), week, freq="W-MON")
+    prices = history.loc[mask].set_index("week_start").weekly_median_price.reindex(calendar)
+    fig, ax = plt.subplots(figsize=(9, 2.4))
+    ax.plot(prices.index, prices.values, color="#087f8c", marker="o", markersize=3, linewidth=1.8)
+    ax.set(ylabel=f"RM per {row.unit}", xlabel="Recent eligible weekly medians; gaps remain blank")
+    ax.set_xlim(calendar.min() - pd.Timedelta(days=3), week + pd.Timedelta(days=3))
+    ticks = AutoDateLocator(minticks=3, maxticks=5)
+    ax.xaxis.set_major_locator(ticks)
+    ax.xaxis.set_major_formatter(ConciseDateFormatter(ticks))
+    ax.grid(axis="y", alpha=.2)
+    fig.tight_layout()
+    st.pyplot(fig)
+    plt.close(fig)
+    local = explanations.loc[explanations.cohort.eq("latest") & explanations.explanation_id.eq(row.forecast_id)]
+    if local.empty:
+        drivers = "No cached local explanation is available. No explanation was inferred or substituted."
+    else:
+        case = local.iloc[0]
+        contributions = pd.Series({name.removeprefix("shap__"): float(case[name])
+                                   for name in case.index if name.startswith("shap__")})
+        strongest = contributions.abs().nlargest(3).index
+        drivers = "; ".join(f"{FEATURE_NAMES.get(name, name)} {'raises' if contributions[name] > 0 else 'lowers' if contributions[name] < 0 else 'does not change'} the model output"
+                            for name in strongest) + "."
+    st.write("**What influenced the score:** " + drivers)
+    st.caption("The score is not a verified chance of a surge. Feature contributions describe this model, not economic causes. The 10% surge target is a classification definition, not a predicted price increase.")
+    # Self-contained HTML can be shared or printed without a running dashboard.
+    facts = {"Forecast case ID": row.forecast_id, "Observed week": date_span(week, week + pd.Timedelta(days=6)), "Forecast week": forecast_period,
+             "Observed weekly median": f"RM {row.weekly_median_price:.2f} per {row.unit}",
+             "Shop type": row.premise_type, "Next-week status": status, "Observed pattern": pattern,
+             "Uncalibrated review score": f"{row.model_score:.3f}", "Frozen review cutoff": f"{model['score_cutoff']:.5f}",
+             "Observation support": coverage, "Forecast model": model["version"], "Checkpoint SHA-256": model["sha256"],
+             "Evidence status": model["evidence_status"]}
+    precision = model["validation_metrics"].get("precision")
+    if precision is not None and pd.notna(precision):
+        facts["Selected-model validation precision"] = f"{precision:.1%} of validation alerts were correct; this is not a probability for this case"
+    facts_html = "".join(f"<tr><th>{escape(key)}</th><td>{escape(str(value))}</td></tr>" for key, value in facts.items())
+    weeks_html = "".join(f"<tr><td>{date:%d %b %Y}</td><td>{'No eligible observation' if pd.isna(value) else f'RM {value:.2f}'}</td></tr>"
+                         for date, value in prices.items())
+    brief = f"""<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>HargaLens price story</title><style>body{{font:16px/1.6 system-ui,sans-serif;max-width:850px;margin:32px auto;padding:0 20px;color:#163341;background:white}}
+    h1,h2{{color:#087f8c}}table{{width:100%;border-collapse:collapse}}th,td{{padding:8px;text-align:left;border-bottom:1px solid #dde5e5;overflow-wrap:anywhere}}th{{width:36%}}small{{color:#455f68}}</style>
+    <h1>HargaLens · Price story</h1><h2>{escape(headline)}</h2><p><strong>Historical research demonstration. This is not a live warning.</strong></p>
+    <table>{facts_html}</table><h2>What influenced the score?</h2><p>{escape(drivers)}</p>
+    <h2>Recent eligible weekly medians</h2><p>Unit: {escape(str(row.unit))}. Missing weeks are not filled.</p><table><tr><th>Week starting</th><th>Observed median</th></tr>{weeks_html}</table>
+    <h2>Read with care</h2><p>The score is uncalibrated, not a verified event probability. A surge means an observed next-week local median increase of at least 10%; no next-week price is predicted here. Alerts may be false and surges may be missed. Anomaly flags are separate signals without labelled anomaly ground truth. SHAP contributions are not economic causes.</p>
+    <p>{escape(str(model['evidence_status']))}. No affordability benefit is established. History includes eligible original-study rows and the latest snapshot, not all raw observations.</p>
+    <small>Source: Malaysian PriceCatcher. Generated from the saved HargaLens dashboard export. Use your browser's Print option to save a PDF.</small></html>"""
+    st.download_button(f"Download brief · {row['item']} · {row.district}", brief.encode("utf-8"), mime="text/html",
+                       key=f"brief_{row.forecast_id}", file_name=f"hargalens_story_{row.forecast_id}.html")
+    st.caption("Share the brief or open it in a browser and print it as a PDF. Dates, model identity, support and limitations travel with the case.")
 
 
 def review_list(latest):
@@ -405,6 +497,7 @@ def main():
         st.warning("No supported latest forecasts match these filters. Older history may still be available. This does not mean no surge risk.")
     review, details, evidence = st.tabs(["Overview", "Explore prices", "About the model"])
     with review:
+        spotlight(history, latest, explanations, entry["forecast_model"])
         group_overview(latest)
         review_list(latest)
     with details:
