@@ -54,6 +54,10 @@ HargaLens means a clearer view of **harga** (price). Its basket-and-lens logo is
 - **Explore prices:** one item/location/shop type, price unit, 12-week/26-week/full eligible history, observation counts and cached explanations. Missing weeks remain blank; an older prediction never substitutes for an unsupported latest forecast.
 - **About the model:** the displayed candidate's own validation evidence, false-alert rate, training dates, fixed cutoff, support counts and limitations.
 
+Choose **Priority shortlist** in the watchlist to review at most 25, 50 or 100 alerts above the frozen cutoff within your current filters. Cases are ranked by score, then case ID for ties. The dashboard shows how many eligible alerts are outside the shortlist; **Review alerts** restores the full eligible list. Main counters, scores and alert flags do not change. This is a workload view, not an adopted alert policy or a measured accuracy gain for your filters/new dates. Some food groups may receive no shortlist places.
+
+Food-group guidance appears in price stories, the watchlist, Explore prices, coverage summaries and downloaded briefs/CSVs. It describes the saved January–March 2026 longer-history validation study, not a confidence estimate for each case. Vegetables have the strongest evidence but many false alerts; chicken detection is limited; eggs/flour deteriorated; rice/oil have very few validation positives; sugar detection could not be assessed. The original-model view directs users to its own evaluation. Historical price browsing remains available for weak-evidence groups.
+
 The dashboard reads this entry point under the printed active run:
 
 ```text
@@ -98,6 +102,8 @@ These scores are a **retrospective offline demonstration**, not proof of timely 
 Do not rerun studies merely to refresh the dashboard. Their code/input fingerprints preserve separate results; rerunning changed code may create another experiment folder. Current lookup units/geography remain a provisional interpretation of historical metadata. Study 12 retains source rows with unknown metadata in its cache and records exclusions from supplementary training in its metadata/cleaning audits.
 
 To inspect training source prices in a completed run, run **only the final cell of 03**. Its regenerated `training_source_context.csv` is evidence, not a decision log. Study 14 preserves manual notes at `14_review_readiness/source_review/<snapshot>/source_review_log.csv`. Neighbour agreement and re-downloading the same record do not independently confirm an error; log confirmations remain user-recorded claims and never change prices/models automatically. Its 12 reviewed cases remain unresolved in the saved run.
+
+To investigate a case, check the exact date, shop, item and unit against a dated receipt, an applicable shop listing or a provider correction. Record the reference and reasoning in the existing log's `evidence_reference` and `evidence_notes`, with `reviewer` and `reviewed_on`. Keep `decision=unresolved` unless that evidence supports `confirmed_error` or `confirmed_valid`; a suspicious pattern alone is insufficient. Rerun 14 to validate/preserve the log, without refitting. Any confirmed correction should be evaluated in a separate documented experiment, preserving the completed model and reserved comparison. No extra review files or user-evaluation materials are required.
 
 Study 14's whole-validation workload results are:
 
