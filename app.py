@@ -31,6 +31,23 @@ FEATURE_NAMES = {
     "month": "Month", "week_sin": "Seasonal week component (sine)",
     "week_cos": "Seasonal week component (cosine)",
 }
+GROUP_GUIDANCE = {
+    "Vegetables": "Strongest validation evidence, but many alerts were false. Check local price history.",
+    "Chicken": "Limited evidence; most validation surges were missed. Below-cutoff scores need care.",
+    "Eggs": "Weak detection; validation results declined with longer history. Prioritise observed prices.",
+    "Flour": "Weak detection; validation results declined with longer history. Prioritise observed prices.",
+    "Rice": "Very limited evidence: only two validation surges. Avoid broad reliability claims.",
+    "Cooking Oil": "Very limited evidence: only one validation surge. Detection reliability is unconfirmed.",
+    "Sugar": "No positive training/validation cases. Surge detection could not be assessed.",
+}
+GUIDANCE_REFERENCE = "Saved FYP longer-history validation study, January–March 2026; not per-case confidence."
+
+
+def group_guidance(group, version):
+    """Qualitative findings from saved study 12, not per-case confidence estimates."""
+    if version != "longer_2024_2025":
+        return "Consult this model's own saved evaluation; longer-history study guidance does not apply."
+    return GROUP_GUIDANCE.get(group, "No group-specific study guidance is available. Check observed prices and coverage.")
 
 
 def read_json(path):
@@ -285,6 +302,8 @@ def spotlight(history, latest, explanations, model, refresh=None):
              f"The saved model marks this case **{status.lower()}** for **{forecast_period}**. "
              f"The separate pattern detector says **{pattern.lower()}**.")
     st.caption(f"Observation support: {coverage}. Shop composition and sparse observations can affect local medians.")
+    guidance = group_guidance(row.project_group, model["version"])
+    st.caption("Saved validation study guidance: " + guidance)
     mask = pd.Series(True, index=history.index)
     for key in SERIES:
         mask &= history[key].eq(row[key])
@@ -310,6 +329,8 @@ def spotlight(history, latest, explanations, model, refresh=None):
              "Uncalibrated review score": f"{row.model_score:.3f}", "Frozen review cutoff": f"{model['score_cutoff']:.5f}",
              "Observation support": coverage, "Forecast model": model["version"], "Checkpoint SHA-256": model["sha256"],
              "Evidence status": model["evidence_status"]}
+    facts["Food-group study guidance"] = guidance
+    facts["Guidance reference"] = GUIDANCE_REFERENCE if model["version"] == "longer_2024_2025" else "Consult this model's own evaluation."
     if refresh:
         facts["Snapshot type"] = refresh["snapshot_type"]
         facts["Scores generated at"] = refresh["generated_at"]
@@ -336,21 +357,33 @@ def spotlight(history, latest, explanations, model, refresh=None):
 
 def review_list(latest, refresh=None):
     st.subheader("Your local price watchlist")
-    view = st.radio("Show", ["All monitored prices", "Review alerts", "Unusual patterns"], horizontal=True)
-    shown = latest.copy()
-    if view == "Review alerts":
+    view = st.radio("Show", ["All monitored prices", "Review alerts", "Unusual patterns", "Priority shortlist"], horizontal=True)
+    shown = latest.sort_values(["model_score", "forecast_id"], ascending=[False, True]).copy()
+    capacity = None
+    eligible_alerts = int(latest.predicted_surge.sum())
+    if view in ["Review alerts", "Priority shortlist"]:
         shown = shown.loc[shown.predicted_surge.eq(1)]
     elif view == "Unusual patterns":
         shown = shown.loc[shown.is_anomaly]
+    if view == "Priority shortlist":
+        capacity = st.selectbox("Maximum alerts to review", [25, 50, 100], key="review_capacity")
+        shown = shown.head(capacity)
+        st.caption(f"Showing {len(shown):,} of {eligible_alerts:,} alerts above the frozen cutoff within your filters; "
+                   f"{eligible_alerts - len(shown):,} eligible alerts are outside this shortlist. "
+                   "Ranked by score, with case ID breaking ties. Choose Review alerts to see all eligible alerts.")
+        st.info("This view limits review workload. It does not improve the model or change its cutoff. "
+                "Smaller lists can miss more surges; their accuracy has not been measured for these filters or this snapshot. "
+                "Other food groups may be absent from the shortlist.")
     if shown.empty:
         st.info("No matching rows in this view. Below-cutoff scores do not rule out future surges.")
         return
-    shown = shown.sort_values(["model_score", "forecast_id"], ascending=[False, True])
     table = shown[["project_group", "item", "state", "district", "premise_type", "weekly_median_price", "unit",
                    "model_score", "predicted_surge", "is_anomaly", "has_cached_explanation"]].copy()
     table["predicted_surge"] = table.predicted_surge.map({1: "Review next week", 0: "Below alert cutoff"})
     table["is_anomaly"] = table.is_anomaly.map({True: "Flagged", False: "Not flagged"})
     table["has_cached_explanation"] = table.has_cached_explanation.map({True: "Available", False: "Not cached"})
+    table["Study guidance"] = [group_guidance(group, version)
+                               for group, version in zip(shown.project_group, shown.forecast_model_version)]
     table = table.rename(columns={"project_group": "Food group", "item": "Item", "state": "State", "district": "District",
         "premise_type": "Shop type", "weekly_median_price": "Weekly median (RM)", "unit": "Unit", "model_score": "Review score",
         "predicted_surge": "Next-week alert", "is_anomaly": "Unusual pattern", "has_cached_explanation": "Explanation"})
@@ -363,6 +396,12 @@ def review_list(latest, refresh=None):
     download["Forecast week starting"] = (shown.week_start + pd.Timedelta(days=7)).dt.strftime("%Y-%m-%d").to_numpy()
     download["Forecast week ending"] = shown.next_week_end.dt.strftime("%Y-%m-%d").to_numpy()
     download["Forecast model version"] = shown.forecast_model_version.to_numpy()
+    download["Guidance reference"] = [GUIDANCE_REFERENCE if version == "longer_2024_2025" else "Consult this model's own evaluation."
+                                     for version in shown.forecast_model_version]
+    download["Review view"] = view
+    download["Shortlist capacity"] = capacity
+    download["Eligible alerts within filters"] = eligible_alerts
+    download["Eligible alerts outside shortlist"] = eligible_alerts - len(shown) if capacity is not None else None
     if refresh:
         download["Scores generated at"] = refresh["generated_at"]
         download["Snapshot type"] = refresh["snapshot_type"]
@@ -445,6 +484,7 @@ def explore_series(history, latest, explanations, week, units):
     cols[2].metric("Next-week alert", "Review" if row.predicted_surge else "Below cutoff")
     cols[3].metric("Unusual pattern", "Flagged" if row.is_anomaly else "Not flagged")
     st.caption(f"Unit: {row.unit}. Current week: {int(row.record_count)} price records, {int(row.premise_count)} shops, {int(row.observed_days)} observed days. No alert does not guarantee stable prices.")
+    st.caption("Saved validation study guidance: " + group_guidance(row.project_group, row.forecast_model_version))
     explain_case(row, explanations, units)
 
 
@@ -473,9 +513,12 @@ def model_and_coverage(entry, latest, importance, history):
     counts = latest.groupby("project_group").agg(supported_rows=("forecast_id", "size"),
         surge_alerts=("predicted_surge", "sum"), unusual_patterns=("is_anomaly", "sum"),
         cached_explanations=("has_cached_explanation", "sum")).reset_index()
+    counts["Study guidance"] = counts.project_group.map(lambda group: group_guidance(group, model["version"]))
     st.dataframe(counts.rename(columns={"project_group": "Food group", "supported_rows": "Supported rows",
         "surge_alerts": "Surge alerts", "unusual_patterns": "Unusual patterns", "cached_explanations": "Cached explanations"}),
         hide_index=True, width="stretch")
+    st.caption("Group guidance summarises the saved January–March 2026 longer-history validation study. "
+               "It is not a confidence estimate for an individual alert or a new period. Price history remains available for groups with weak evidence.")
     st.caption(f"{history[SERIES].drop_duplicates().shape[0]:,} local series have eligible historical rows in these filters. Supported-row counts are not population coverage. Places/items outside this study cannot be assessed here.")
     st.write("The separate anomaly detector uses a January–December 2025 reference. Its flags identify unusual patterns; there is no labelled anomaly ground truth to measure accuracy.")
     if "refresh" in entry:
