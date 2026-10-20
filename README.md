@@ -1,6 +1,6 @@
-# PriceCatcher FYP
+# HargaLens — PriceCatcher FYP
 
-A readable pipeline for Malaysian local weekly prices, next-week surge prediction, anomaly review and precomputed explanations. A single-file Streamlit dashboard displays the saved forecasts, historical prices and explanations without training models.
+**HargaLens — See local prices clearly.** A readable pipeline for Malaysian local weekly prices, next-week surge prediction, anomaly review and precomputed explanations. A single-file Streamlit dashboard displays the saved forecasts, historical prices and explanations without training models.
 
 ## Start here
 
@@ -26,11 +26,12 @@ pricecatcher_config.py              shared settings and run locations
 prepare.py                          preparation runner used internally by 06
 requirements.txt
 research/                           optional studies 09–13
+assets/hargalens-mark.png            shared dashboard logo and page icon
 ```
 
 Two Python files support the notebooks; the third, `app.py`, is the dashboard. Generated data, models and caches stay under ignored `data/`; none need committing to Git. Keep completed experiment folders for the report.
 
-Keep the eight main notebooks, the three Python files, `requirements.txt`, `.gitignore` and this README. The five `research/` notebooks preserve the comparisons and audit behind the report; they are optional to run. There are no duplicate source files to delete. `pricecatcher_config.py` holds shared rules, and 06 uses `prepare.py` to prepare missing validation folds.
+Keep the eight main notebooks, the three Python files, the logo under `assets/`, `requirements.txt`, `.gitignore` and this README. The five `research/` notebooks preserve the comparisons and audit behind the report; they are optional to run. There are no duplicate source files to delete. `pricecatcher_config.py` holds shared rules, and 06 uses `prepare.py` to prepare missing validation folds.
 
 For local housekeeping, `.ipynb_checkpoints/` and `__pycache__/` can be removed when notebooks are stopped; Python/Jupyter recreate them. Keep `.venv/` for your working kernel. Keep completed `data/` runs and source snapshots until they are backed up and no longer needed for the report; deleting them can break model verification or require downloading the data again.
 
@@ -166,11 +167,13 @@ Use the local address printed by Streamlit. Stop the app with Ctrl+C. No API key
 
 The app follows the same `data/active_run.txt` as the notebooks (or an explicit `PRICECATCHER_DATA_DIR`). It never searches older completed runs to hide an unfinished active run. Missing/changed files produce an actionable message instead of substituting forecasts. It verifies the 08 entry point, cache hashes, model/version consistency, dates, alerts and explanation mapping. Original train/validation/test parquet hashes must match the 08 provenance before history is loaded; only identifier, price and coverage columns are read, not outcome labels. No model is loaded or fitted. Streamlit caches verified data across filter changes and rechecks when relevant file metadata changes.
 
+HargaLens combines **harga** (price) and **lens** (a clearer view). The original transparent basket-and-lens logo uses teal and amber and is stored once under `assets/`; it is reused for the header, sidebar and browser icon. No extra branding library or service is needed. The tagline describes price visibility, not proven savings. The first-visit guide explains the reading order and the distinction between next-week review alerts and observed unusual patterns. Theme-safe card colours work in light and dark mode.
+
 Three tabs keep the workflow small:
 
-- **Review list:** state/district/food/item/shop filters, frozen-threshold alerts, separate unusual-pattern flags, scores and CSV download. These are investigation priorities, not verified event probabilities.
-- **Price history & explanations:** one local series at a time, RM and unit, missing weeks left blank, current record/shop/day counts and cached SHAP when available. The default is the highest-score supported series within your filters. Historical locations without a latest prediction explicitly show no supported forecast.
-- **Model & coverage:** the selected model's own validation evidence, false-alert rate, training dates, cutoff, filtered support counts and limitations. No original-model test scores are attributed to the longer-history candidate.
+- **Overview:** resettable state/district/food/item/shop filters, food-group alert-count chart, frozen-threshold alerts, separate unusual-pattern flags, scores and CSV download. These are investigation priorities, not verified event probabilities.
+- **Explore prices:** one local series at a time, 12-week/26-week/full-history chart views, RM and unit, missing weeks left blank, current record/shop/day counts and cached SHAP when available. The default is the highest-score supported series within your filters. Historical locations without a latest prediction explicitly show no supported forecast.
+- **About the model:** the selected model's own validation evidence, false-alert rate, training dates, cutoff, filtered support counts and limitations. No original-model test scores are attributed to the longer-history candidate.
 
 History comes from eligible **original 2025–June 2026 modelling rows** plus the latest snapshot, not all raw source observations or the added 2024 training data. Boundary, sparse and excluded weeks can appear as gaps. Areas absent from these inputs cannot be assessed. The app is a historical demonstration; the forecast period shown is 29 June–5 July 2026, not a live warning. No filter changes the frozen model cutoff or the 10% target.
 
