@@ -6,7 +6,7 @@
 
 **Already completed Notebook 08?** Pull the latest code, install the updated requirements, and start the dashboard using the command below. No notebook rerun is needed for the completed longer-history export. If `08_dashboard/dashboard_manifest.json` is missing, Run All in **08 only** using your project kernel first.
 
-**Starting a new reproduction?** Run **01 → 06**, then **07 → 08**. Notebook 01 starts a separate run; the others continue it automatically. For a longer-history candidate, run research **11 → 12** once after 06, then rerun 08. Studies 09, 10 and 13 are optional evidence, not prerequisites.
+**Starting a new reproduction?** Run **01 → 06**, then **07 → 08**. Notebook 01 starts a separate run; the others continue it automatically. For a longer-history candidate, run research **11 → 12** once after 06, then rerun 08. Studies 09, 10, 13 and 14 are optional evidence, not prerequisites.
 
 Do not start 01 merely to reopen saved results. Do not run preparation and modelling concurrently. The printed run folder identifies the files used.
 
@@ -25,13 +25,13 @@ app.py                              read-only Streamlit dashboard
 pricecatcher_config.py              shared settings and run locations
 prepare.py                          preparation runner used internally by 06
 requirements.txt
-research/                           optional studies 09–13
+research/                           optional studies 09–14
 assets/hargalens-mark.png            shared dashboard logo and page icon
 ```
 
 Two Python files support the notebooks; the third, `app.py`, is the dashboard. Generated data, models and caches stay under ignored `data/`; none need committing to Git. Keep completed experiment folders for the report.
 
-Keep the eight main notebooks, the three Python files, the logo under `assets/`, `requirements.txt`, `.gitignore` and this README. The five `research/` notebooks preserve the comparisons and audit behind the report; they are optional to run. There are no duplicate source files to delete. `pricecatcher_config.py` holds shared rules, and 06 uses `prepare.py` to prepare missing validation folds.
+Keep the eight main notebooks, the three Python files, the logo under `assets/`, `requirements.txt`, `.gitignore` and this README. The six `research/` notebooks preserve the comparisons and audit behind the report; they are optional to run. There are no duplicate source files to delete. `pricecatcher_config.py` holds shared rules, and 06 uses `prepare.py` to prepare missing validation folds.
 
 For local housekeeping, `.ipynb_checkpoints/` and `__pycache__/` can be removed when notebooks are stopped; Python/Jupyter recreate them. Keep `.venv/` for your working kernel. Keep completed `data/` runs and source snapshots until they are backed up and no longer needed for the report; deleting them can break model verification or require downloading the data again.
 
@@ -110,6 +110,7 @@ The old `08_explanations/` original-model cache is preserved. New exports use `0
 | 11 — historical audit | All 12 monthly 2024 files available/compatible; January, July and December inspected |
 | 12 — longer history | Validation AP improved about 0.223 → 0.330; eggs/flour deteriorated, so report trade-offs |
 | 13 — future registration | Optional frozen-model November plan; no prices, predictions or evaluation loaded |
+| 14 — review readiness | Training-source investigation log and validation-only weekly alert workload comparisons; no refit or policy adoption |
 
 The studies retain their saved outputs and generated experiment folders. Moving notebooks changes code provenance; deliberately rerunning a study may create a new fingerprint folder. It does not replace the completed evidence. Do not rerun the studies just to refresh the dashboard.
 
@@ -118,6 +119,18 @@ Study 11 saves small audit reports under `data/11_historical_audit/`. Study 12 r
 To inspect suspicious prices in a completed run, run **only the final cell of 03**. Its `training_source_context.csv` is regenerated evidence, not an editable decision log. Priorities are investigation aids; they do not confirm errors or replacement prices. Keep research decisions and independent evidence in report notes.
 
 Study 13 reserves four outcome weeks, 2–29 November 2026, with earliest evaluation 30 November subject to full data availability. It is optional and should not delay dashboard work or the December report. July–September exposure is uncertain, so do not claim it is an untouched test. Registration alone does not implement evaluation or prove live forecasts.
+
+### The two remaining practical checks
+
+Run **research/14_review_readiness.ipynb** after the completed longer-history export in 08. No rerun of 01–13, model fitting or dashboard changes is needed. If the source-context CSV is missing, run **only the final cell of 03** first.
+
+The notebook verifies the chosen checkpoint and frozen validation population, prepares 12 high-priority training-price cases and checks their prices/units against the verified integrated snapshot. It preserves a manual evidence log at `<active run>/14_review_readiness/source_review/<snapshot>/source_review_log.csv`. Record independently supported findings there using `unresolved`, `confirmed_error` or `confirmed_valid`, with evidence reference, notes, reviewer and review date. Neighbour agreement and re-downloading the same record do not independently confirm an error. Log confirmations are user-recorded claims, not automatically authenticated. No log entry changes prices, labels, exclusions or models.
+
+The other section compares the **frozen alert rule** against reviewing at most **25, 50 or 100 existing alerts per week**, across the same whole-study validation population. It reports cases/week, precision, recall, F1, false alerts, missed surges and group support. Scores below cutoff are never promoted. Ties use deterministic series-key order. These are illustrative workloads, not stakeholder requirements. Smaller lists can lose recall, precision gains are not guaranteed, and AP is unchanged. Do not apply these metrics to arbitrary dashboard filters or describe this as independent test performance.
+
+Separate fingerprint folders contain `policy_comparison.csv`, `weekly_workload.csv`, `policy_by_group.csv` and `review_manifest.json`. Reruns preserve evidence notes and never load test rows, replace the dashboard or change November registration. The source provider is still inaccessible from this cloud (proxy 403), so independent confirmation remains outstanding. Run the notebook locally for the real-data workload figures; summary CSV metrics alone cannot reconstruct ranked-shortlist results.
+
+Ask intended reviewers what weekly case volume they can investigate, then assess task completion, dates/units, alert versus anomaly comprehension and whether missing coverage/explanations are understood. Select any future policy based on a declared user need and evaluate it prospectively; this notebook intentionally selects no winner. Confirmed material source corrections belong in a separate documented experiment, preserving the current evidence and registered comparison.
 
 ## Current saved results
 
