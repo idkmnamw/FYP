@@ -200,6 +200,8 @@ Spotlight connects a saved forecast with its local context. The three highest-sc
 
 ## Evaluate the dashboard before writing final claims
 
+Use [the short evaluation guide](evaluation/guide.md) and [empty results template](evaluation/results_template.csv). The guide provides six tasks, moderator scoring, three feedback questions, workload questions and report instructions. Copy completed responses into ignored `data/evaluation/`; do not commit participant responses. No user sessions or feedback have been fabricated or collected by adding these materials. Keep the frozen alert rule and registered comparison unchanged.
+
 Check representative items and locations against Notebook 08, including the forecast dates, units, scores, alert cutoff, anomaly flags and whether SHAP is available. Check a historical series without a latest forecast; it must not substitute an older prediction. Measure application/browser loading and filter response separately from the notebook's file-read timing.
 
 Ask suitable users to find a local item, interpret its price chart and alert, distinguish an anomaly flag from a forecast, and recognise a missing explanation or unsupported forecast. Record task completion, response times, misunderstandings and improvements. User comprehension/usefulness testing does not establish reduced prices or affordability benefits. Keep the original model's test results and the longer model's exploratory validation evidence separate in the report. No further model experiment is required to implement the prototype.
