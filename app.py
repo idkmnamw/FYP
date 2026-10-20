@@ -159,6 +159,21 @@ def date_span(start, end):
     return f"{pd.Timestamp(start):%d %b %Y} – {pd.Timestamp(end):%d %b %Y}"
 
 
+def price_history_chart(prices, unit, height=3.4, xlabel="Week starting Monday"):
+    """Draw an exact-week price series without filling gaps or extrapolating prices."""
+    fig, ax = plt.subplots(figsize=(9, height))
+    ax.plot(prices.index, prices.values, color="#087f8c", linewidth=1.8, marker=".", markersize=4)
+    ax.set(ylabel=f"RM per {unit}", xlabel=xlabel)
+    ax.set_xlim(prices.index.min() - pd.Timedelta(days=3), prices.index.max() + pd.Timedelta(days=3))
+    ticks = AutoDateLocator(minticks=3, maxticks=6)
+    ax.xaxis.set_major_locator(ticks)
+    ax.xaxis.set_major_formatter(ConciseDateFormatter(ticks))
+    ax.grid(axis="y", alpha=.2)
+    fig.tight_layout()
+    st.pyplot(fig)
+    plt.close(fig)
+
+
 def filter_data(history, latest):
     """Offer historical locations too, so an absent latest forecast stays visible."""
     with st.sidebar:
@@ -237,17 +252,7 @@ def spotlight(history, latest, explanations, model):
         mask &= history[key].eq(row[key])
     calendar = pd.date_range(week - pd.Timedelta(weeks=11), week, freq="W-MON")
     prices = history.loc[mask].set_index("week_start").weekly_median_price.reindex(calendar)
-    fig, ax = plt.subplots(figsize=(9, 2.4))
-    ax.plot(prices.index, prices.values, color="#087f8c", marker="o", markersize=3, linewidth=1.8)
-    ax.set(ylabel=f"RM per {row.unit}", xlabel="Recent eligible weekly medians; gaps remain blank")
-    ax.set_xlim(calendar.min() - pd.Timedelta(days=3), week + pd.Timedelta(days=3))
-    ticks = AutoDateLocator(minticks=3, maxticks=5)
-    ax.xaxis.set_major_locator(ticks)
-    ax.xaxis.set_major_formatter(ConciseDateFormatter(ticks))
-    ax.grid(axis="y", alpha=.2)
-    fig.tight_layout()
-    st.pyplot(fig)
-    plt.close(fig)
+    price_history_chart(prices, row.unit, height=2.4, xlabel="Recent eligible weekly medians; gaps remain blank")
     local = explanations.loc[explanations.cohort.eq("latest") & explanations.explanation_id.eq(row.forecast_id)]
     if local.empty:
         drivers = "No cached local explanation is available. No explanation was inferred or substituted."
@@ -378,21 +383,10 @@ def explore_series(history, latest, explanations, week, units):
         start = max(start, week - pd.Timedelta(weeks=weeks - 1))
     calendar = pd.date_range(start, week, freq="W-MON")
     prices = past.set_index("week_start").weekly_median_price.reindex(calendar)
-    fig, ax = plt.subplots(figsize=(9, 3.4))
-    ax.plot(prices.index, prices.values, color="#087f8c", linewidth=1.8, marker=".", markersize=4)
-    ax.set(ylabel=f"RM per {selected.unit}", xlabel="Week starting Monday")
-    # A single observation must not expand the axis into unrelated years.
-    ax.set_xlim(calendar.min() - pd.Timedelta(days=3), week + pd.Timedelta(days=3))
-    ticks = AutoDateLocator(minticks=3, maxticks=6)
-    ax.xaxis.set_major_locator(ticks)
-    ax.xaxis.set_major_formatter(ConciseDateFormatter(ticks))
-    ax.grid(axis="y", alpha=0.2)
-    fig.tight_layout()
     if prices.notna().any():
-        st.pyplot(fig)
+        price_history_chart(prices, selected.unit)
     else:
         st.info("No eligible observations in this time window. Choose All history to see older available prices.")
-    plt.close(fig)
     st.caption("Eligible original-study weekly medians, plus the latest snapshot. Gaps are left blank; missing and excluded weeks are not filled. This is not all raw observations or a fixed-shop price index, and does not include the added 2024 training history.")
     if current.empty:
         st.warning("No supported forecast for this local series in the snapshot week. Its older price history is not a current prediction.")
