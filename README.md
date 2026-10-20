@@ -78,6 +78,10 @@ The app verifies export hashes, model/version consistency, dates, alerts and exp
 
 The saved snapshot describes **22–28 June 2026**, with a forecast horizon of **29 June–5 July 2026**. These are historical dates. Scores are uncalibrated, SHAP is not causal, and the 2025 reference sample does not represent the longer model's entire training population. Missing explanations/forecasts and unsupported locations must remain explicit.
 
+The app, CSV export and price-story brief state observation age as of the current date in Malaysia and whether the snapshot is the latest fully closed calendar week. This describes dates, not complete reporting or timely forecast availability. The app rejects missing/infinite SHAP contributions and anomaly scores; 09 checks all new model scores and explanations before publishing. Failed checks preserve the previous published refresh.
+
+09 also compares supported rows with the original snapshot by food group and state. The app shows both overall counts before filters. Reduced support needs investigation; it is not evidence of worse accuracy and should not be hidden by weakening eligibility. The saved local 09 execution supports 2,946 rows for 12–18 October 2026, versus 5,343 in the June snapshot. It excludes four September records for unknown shop code 22280 and retains 205 statistical price flags across its selected July–October source. Those flags are not confirmed errors or the same list as the 12 training cases.
+
 ## Refresh observations without retraining
 
 After completing 08 with the longer-history checkpoint, open **09_refresh_dashboard.ipynb** in the project kernel and **Restart Kernel and Run All**. This main-folder notebook is maintenance; `research/09_source_quality_sensitivity.ipynb` is a separate research study.

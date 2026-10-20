@@ -153,7 +153,8 @@ def load_exports(run_name, signature):
                 or refresh["registered_period_loaded"] or refresh["model_fitted"] or refresh["cutoff_changed"]):
             raise ValueError("Refresh dates or frozen-model policy are inconsistent.")
         # Display the verified audit only; the dashboard does not read raw price rows.
-        entry = {**entry, "refresh_audit": record["monthly_audit"]}
+        entry = {**entry, "refresh_audit": record["monthly_audit"],
+                 "original_supported_rows": original["latest_supported_rows"]}
     latest = pd.read_parquet(cache / TABLES[0])
     explanations = pd.read_parquet(cache / TABLES[1])
     importance = pd.read_csv(cache / TABLES[2])
@@ -177,6 +178,11 @@ def load_exports(run_name, signature):
     if not latest.has_cached_explanation.eq(latest.forecast_id.isin(local.index)).all():
         raise ValueError("Explanation availability disagrees with the cache.")
     shap_columns = ["shap__" + name for name in manifest["protocol"]["features"]]
+    explanation_columns = shap_columns + ["base_value", "raw_output", "model_score"]
+    if not np.isfinite(explanations[explanation_columns].to_numpy(dtype=float)).all():
+        raise ValueError("Cached explanations contain missing or infinite values. Restore or rebuild the matching export.")
+    if not np.isfinite(latest.anomaly_score.to_numpy(dtype=float)).all():
+        raise ValueError("Cached anomaly scores contain missing or infinite values.")
     np.testing.assert_allclose(explanations.base_value + explanations[shap_columns].sum(axis=1),
                                explanations.raw_output, rtol=1e-5, atol=1e-5)
     raw = explanations.raw_output.to_numpy(dtype=float)
@@ -212,6 +218,23 @@ def load_exports(run_name, signature):
 
 def date_span(start, end):
     return f"{pd.Timestamp(start):%d %b %Y} – {pd.Timestamp(end):%d %b %Y}"
+
+
+def snapshot_freshness(week, today=None):
+    """Describe observation age against closed calendar weeks, using Malaysia time."""
+    day = pd.Timestamp.now(tz="Asia/Kuala_Lumpur") if today is None else pd.Timestamp(today)
+    if day.tzinfo is not None:
+        day = day.tz_convert("Asia/Kuala_Lumpur").tz_localize(None)
+    day = day.normalize()
+    week = pd.Timestamp(week)
+    end = week + pd.Timedelta(days=6)
+    if week.tzinfo is not None or week.dayofweek != 0 or end >= day:
+        raise ValueError("The displayed snapshot must cover a fully closed Monday–Sunday week.")
+    expected = day - pd.Timedelta(days=day.dayofweek + 7)
+    age = (day - end).days
+    behind = (expected - week).days // 7
+    status = "latest fully closed calendar week" if week == expected else f"{behind} calendar week{'s' if behind != 1 else ''} behind the latest closed week"
+    return f"As of {day:%d %b %Y}: observations ended {age} day{'s' if age != 1 else ''} ago; {status}. This does not establish complete reporting or timely forecasts."
 
 
 def price_history_chart(prices, unit, height=3.4, xlabel="Week starting Monday"):
@@ -330,6 +353,7 @@ def spotlight(history, latest, explanations, model, refresh=None):
              "Observation support": coverage, "Forecast model": model["version"], "Checkpoint SHA-256": model["sha256"],
              "Evidence status": model["evidence_status"]}
     facts["Food-group study guidance"] = guidance
+    facts["Snapshot freshness"] = snapshot_freshness(week)
     facts["Guidance reference"] = GUIDANCE_REFERENCE if model["version"] == "longer_2024_2025" else "Consult this model's own evaluation."
     if refresh:
         facts["Snapshot type"] = refresh["snapshot_type"]
@@ -396,6 +420,7 @@ def review_list(latest, refresh=None):
     download["Forecast week starting"] = (shown.week_start + pd.Timedelta(days=7)).dt.strftime("%Y-%m-%d").to_numpy()
     download["Forecast week ending"] = shown.next_week_end.dt.strftime("%Y-%m-%d").to_numpy()
     download["Forecast model version"] = shown.forecast_model_version.to_numpy()
+    download["Snapshot freshness"] = snapshot_freshness(shown.week_start.iloc[0])
     download["Guidance reference"] = [GUIDANCE_REFERENCE if version == "longer_2024_2025" else "Consult this model's own evaluation."
                                      for version in shown.forecast_model_version]
     download["Review view"] = view
@@ -561,6 +586,7 @@ def main():
         run = active_run()
         with st.spinner("Checking saved dashboard exports…"):
             entry, manifest, latest, explanations, importance, history = load_exports(str(run), export_signature(run))
+        freshness = snapshot_freshness(entry["latest_complete_week"])
     except (OSError, ValueError, KeyError, TypeError, AssertionError) as error:
         st.error("The saved dashboard inputs are missing or inconsistent. No forecasts were substituted.")
         st.write("Open Notebook 08 in your project kernel and Run All. It needs the completed 06 and 07 outputs. Do not delete data or restart Notebook 01 just to reopen the dashboard.")
@@ -570,10 +596,14 @@ def main():
         st.stop()
     week = pd.Timestamp(entry["latest_complete_week"])
     st.info(f"Historical demonstration · Observed week: {date_span(week, week + pd.Timedelta(days=6))} · Forecast week: {date_span(week + pd.Timedelta(days=7), week + pd.Timedelta(days=13))}. These are not live warnings.")
+    st.caption(freshness)
     refresh = entry.get("refresh")
     if refresh:
         scored_at = pd.Timestamp(refresh["generated_at"]).tz_convert("Asia/Kuala_Lumpur").strftime("%d %b %Y, %I:%M %p MYT")
         st.warning(f"Offline refresh · Scores generated {scored_at}. Observations were scored retrospectively; these are not archived timely forecasts. Model, cutoff and validation results are unchanged.")
+        st.caption(f"Supported local series before filters: {entry['latest_supported_rows']:,} in this snapshot; "
+                   f"{entry['original_supported_rows']:,} in the original snapshot. Differences describe observation support, "
+                   "not accuracy or population coverage. Check the source audit and Notebook 09's group/state comparison.")
     history, latest = filter_data(history, latest)
     cols = st.columns(4)
     for col, label, value, help_text in zip(cols,
