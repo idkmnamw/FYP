@@ -23,6 +23,7 @@ For a first installation, run `python3 -m venv .venv` before activating it. In V
 | Main notebooks 01–05 | Integration, training-only coverage screening, cleaning, calendar weeks, features/labels and audits |
 | Main notebook 06 | Original chronological model comparison and frozen results |
 | Main notebooks 07–08 | Separate anomaly detector, chosen-model SHAP and dashboard exports |
+| Main notebook 09 | Optional offline observation refresh using the completed longer-history checkpoint; no training or evaluation |
 | `app.py` | One read-only Streamlit dashboard; no model fitting or live downloads |
 | `pricecatcher_config.py` | Shared preparation rules and run locations |
 | `prepare.py` | Prepares missing validation folds when 06 needs them; also provides the optional terminal runner |
@@ -72,6 +73,16 @@ It points to a model-specific cache under `08_dashboard/<model-hash>/`:
 The app verifies export hashes, model/version consistency, dates, alerts and explanation mapping. It checks the frozen original train/validation/test files before reading **only price, coverage and identifier columns**, not labels, for historical charts. History is eligible original 2025–June 2026 modelling rows plus the latest snapshot, not all raw observations or the added 2024 training history. Streamlit reuses verified data across filters and invalidates its cache when relevant file metadata changes. No model object or SHAP calculation is needed while browsing.
 
 The saved snapshot describes **22–28 June 2026**, with a forecast horizon of **29 June–5 July 2026**. These are historical dates. Scores are uncalibrated, SHAP is not causal, and the 2025 reference sample does not represent the longer model's entire training population. Missing explanations/forecasts and unsupported locations must remain explicit.
+
+## Refresh observations without retraining
+
+After completing 08 with the longer-history checkpoint, open **09_refresh_dashboard.ipynb** in the project kernel and **Restart Kernel and Run All**. This main-folder notebook is maintenance; `research/09_source_quality_sensitivity.ipynb` is a separate research study.
+
+Leave `SNAPSHOT_WEEK = None` for the last calendar week fully closed before today in Malaysia, or enter an earlier Monday. The official source must contain observations through that week's Sunday. New source months are downloaded once per snapshot, processed using frozen lookups, eligibility, bounds and egg conversions, then cached and verified. Unknown/blank shop metadata is excluded and counted; statistical flags remain in the inputs. No replacement price is invented. The original June features must reconstruct before newer scores can be published.
+
+Restart/reload the app after 09 finishes. It selects `08_dashboard/refresh_manifest.json` when present, verifies its source/cache hashes, adds refreshed eligible history and displays the actual scoring timestamp and source attrition. New explanations are computed offline for at most 200 latest cases. Browsing still requires no model loading or SHAP computation. Completed derived caches are reused; the original 08 manifest, checkpoints, prepared splits and research evidence are preserved.
+
+These scores are a **retrospective offline demonstration**, not proof of timely forecasts or improved accuracy. Validation precision and group limitations do not change. The workflow refuses to open any monthly file overlapping a registered outcome period, including November under the current plan. Keep that comparison separate. A failed/incomplete download does not replace the published snapshot. To deliberately reopen the original June export, remove **only** `08_dashboard/refresh_manifest.json`, keep its archived caches, and restart the app.
 
 ## Optional research evidence
 

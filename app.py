@@ -74,14 +74,25 @@ def active_run():
 
 def export_signature(run):
     """Invalidate Streamlit's cache when an export or frozen history file changes."""
-    entry_path = run / "08_dashboard" / "dashboard_manifest.json"
+    entry_path = dashboard_entry(run)
     entry = read_json(entry_path)
     cache = inside(run / "08_dashboard", entry["cache_dir"])
     paths = [entry_path, cache / "explanation_manifest.json"]
     paths += [cache / name for name in TABLES]
+    if "refresh" in entry:
+        record_path = inside(run, entry["refresh"]["source_manifest"])
+        paths += [run / "08_dashboard" / "dashboard_manifest.json", record_path,
+                  record_path.parent / "selected_daily_prices.parquet", cache / "refresh_history.parquet"]
     paths += [run / "experiments" / "holdout" / "05_modelling" / f"{split}.parquet"
               for split in ["train", "validation", "test"]]
     return tuple((str(path), path.stat().st_size, path.stat().st_mtime_ns) for path in paths)
+
+
+def dashboard_entry(run):
+    """A published refresh takes precedence; inconsistent files are never hidden."""
+    folder = run / "08_dashboard"
+    refresh = folder / "refresh_manifest.json"
+    return refresh if refresh.is_file() else folder / "dashboard_manifest.json"
 
 
 @st.cache_data(show_spinner=False, max_entries=2)
@@ -89,7 +100,7 @@ def load_exports(run_name, signature):
     """Verify cached files, then read display data only: no models or labels."""
     run = Path(run_name)
     dashboard_dir = run / "08_dashboard"
-    entry = read_json(dashboard_dir / "dashboard_manifest.json")
+    entry = read_json(dashboard_entry(run))
     if entry["schema_version"] != 1:
         raise ValueError("Unsupported dashboard export. Use the current Notebook 08.")
     cache = inside(dashboard_dir, entry["cache_dir"])
@@ -100,11 +111,32 @@ def load_exports(run_name, signature):
     model = entry["forecast_model"]
     if manifest["forecast_model"] != model or manifest["protocol"]["forecast_sha256"] != model["sha256"]:
         raise ValueError("Dashboard files describe different forecasting models.")
-    for name in TABLES:
+    tables = TABLES + (["refresh_history.parquet"] if "refresh" in entry else [])
+    for name in tables:
         if inside(dashboard_dir, entry["files"][name]) != cache / name:
             raise ValueError("Dashboard table paths disagree with the selected cache.")
         if file_hash(cache / name) != manifest["output_sha256"][name]:
-            raise ValueError(f"Cached table changed: {name}. Run All in Notebook 08.")
+            raise ValueError(f"Cached table changed: {name}. Rerun the notebook that published this snapshot (08 or 09).")
+    if "refresh" in entry:
+        refresh = entry["refresh"]
+        original_path = dashboard_dir / "dashboard_manifest.json"
+        if (manifest.get("refresh") != refresh or file_hash(original_path) != refresh["original_entry_sha256"]
+                or refresh["origin_week"] != entry["latest_complete_week"]):
+            raise ValueError("Refresh metadata or original export changed. Restore the matching snapshot.")
+        original = read_json(original_path)
+        if original["forecast_model"] != model or original["anomaly_model"] != entry["anomaly_model"]:
+            raise ValueError("A refresh cannot replace the frozen forecasting or anomaly model.")
+        record_path = inside(run, refresh["source_manifest"])
+        if file_hash(record_path) != refresh["source_manifest_sha256"]:
+            raise ValueError("Refresh source audit changed.")
+        record = read_json(record_path)
+        if file_hash(record_path.parent / "selected_daily_prices.parquet") != record["selected_sha256"]:
+            raise ValueError("Refresh source cache changed. Restore its matching snapshot.")
+        if (record["policy"]["end"] != str((pd.Timestamp(refresh["origin_week"]) + pd.Timedelta(days=6)).date())
+                or refresh["registered_period_loaded"] or refresh["model_fitted"] or refresh["cutoff_changed"]):
+            raise ValueError("Refresh dates or frozen-model policy are inconsistent.")
+        # Display the verified audit only; the dashboard does not read raw price rows.
+        entry = {**entry, "refresh_audit": record["monthly_audit"]}
     latest = pd.read_parquet(cache / TABLES[0])
     explanations = pd.read_parquet(cache / TABLES[1])
     importance = pd.read_csv(cache / TABLES[2])
@@ -143,6 +175,12 @@ def load_exports(run_name, signature):
         if file_hash(path) != expected:
             raise ValueError(f"Frozen {split} history changed. Restore its original snapshot; do not regenerate this experiment.")
         history_parts.append(pd.read_parquet(path, columns=HISTORY_COLUMNS))
+    if "refresh" in entry:
+        refreshed_history = pd.read_parquet(cache / "refresh_history.parquet", columns=HISTORY_COLUMNS)
+        original_week = pd.Timestamp(original["latest_complete_week"])
+        if not refreshed_history.week_start.gt(original_week).all():
+            raise ValueError("Refresh history overlaps the frozen original history.")
+        history_parts.append(refreshed_history)
     history_parts.append(latest[HISTORY_COLUMNS])
     history = pd.concat(history_parts, ignore_index=True).drop_duplicates()
     if history.duplicated(SERIES + ["week_start"]).any():
@@ -211,7 +249,7 @@ def group_overview(latest):
     st.caption("Amber = a next-week alert to investigate. Teal = below the alert cutoff, which still carries uncertainty. Counts reflect your filters and available observations, not each group's population risk.")
 
 
-def spotlight(history, latest, explanations, model):
+def spotlight(history, latest, explanations, model, refresh=None):
     """Turn fixed saved results into a readable case story and portable brief."""
     if latest.empty:
         return
@@ -272,6 +310,10 @@ def spotlight(history, latest, explanations, model):
              "Uncalibrated review score": f"{row.model_score:.3f}", "Frozen review cutoff": f"{model['score_cutoff']:.5f}",
              "Observation support": coverage, "Forecast model": model["version"], "Checkpoint SHA-256": model["sha256"],
              "Evidence status": model["evidence_status"]}
+    if refresh:
+        facts["Snapshot type"] = refresh["snapshot_type"]
+        facts["Scores generated at"] = refresh["generated_at"]
+        facts["Source quality"] = refresh["source_correctness"]
     precision = model["validation_metrics"].get("precision")
     if precision is not None and pd.notna(precision):
         facts["Selected-model validation precision"] = f"{precision:.1%} of validation alerts were correct; this is not a probability for this case"
@@ -292,7 +334,7 @@ def spotlight(history, latest, explanations, model):
     st.caption("Share the brief or open it in a browser and print it as a PDF. Dates, model identity, support and limitations travel with the case.")
 
 
-def review_list(latest):
+def review_list(latest, refresh=None):
     st.subheader("Your local price watchlist")
     view = st.radio("Show", ["All monitored prices", "Review alerts", "Unusual patterns"], horizontal=True)
     shown = latest.copy()
@@ -321,6 +363,9 @@ def review_list(latest):
     download["Forecast week starting"] = (shown.week_start + pd.Timedelta(days=7)).dt.strftime("%Y-%m-%d").to_numpy()
     download["Forecast week ending"] = shown.next_week_end.dt.strftime("%Y-%m-%d").to_numpy()
     download["Forecast model version"] = shown.forecast_model_version.to_numpy()
+    if refresh:
+        download["Scores generated at"] = refresh["generated_at"]
+        download["Snapshot type"] = refresh["snapshot_type"]
     st.download_button("Download these rows (CSV)", download.to_csv(index=False).encode("utf-8-sig"),
                        file_name="hargalens_price_review.csv", mime="text/csv")
 
@@ -387,7 +432,7 @@ def explore_series(history, latest, explanations, week, units):
         price_history_chart(prices, selected.unit)
     else:
         st.info("No eligible observations in this time window. Choose All history to see older available prices.")
-    st.caption("Eligible original-study weekly medians, plus the latest snapshot. Gaps are left blank; missing and excluded weeks are not filled. This is not all raw observations or a fixed-shop price index, and does not include the added 2024 training history.")
+    st.caption("Eligible original-study weekly medians, plus any refreshed eligible observations. Gaps are left blank; missing and excluded weeks are not filled. This is not all raw observations or a fixed-shop price index, and does not include the added 2024 training history.")
     if current.empty:
         st.warning("No supported forecast for this local series in the snapshot week. Its older price history is not a current prediction.")
         return
@@ -433,6 +478,19 @@ def model_and_coverage(entry, latest, importance, history):
         hide_index=True, width="stretch")
     st.caption(f"{history[SERIES].drop_duplicates().shape[0]:,} local series have eligible historical rows in these filters. Supported-row counts are not population coverage. Places/items outside this study cannot be assessed here.")
     st.write("The separate anomaly detector uses a January–December 2025 reference. Its flags identify unusual patterns; there is no labelled anomaly ground truth to measure accuracy.")
+    if "refresh" in entry:
+        st.subheader("Source quality in the refreshed observations")
+        st.caption("All locations, before your filters. The original lookup and cleaning rules are frozen; unknown shops and incomplete metadata are excluded, never guessed. Retained statistical flags are not confirmed errors. The 12 training-source review cases still need independent evidence.")
+        columns = ["month", "selected_scope_rows", "invalid_removed", "unknown_metadata_removed",
+                   "wholesale_removed", "frozen_sparse_items_removed", "retained_rows", "flagged_rows_retained"]
+        audit = pd.DataFrame(entry["refresh_audit"])[columns].rename(columns={
+            "month": "Month", "selected_scope_rows": "Basket records", "invalid_removed": "Invalid prices removed",
+            "unknown_metadata_removed": "Missing metadata removed", "wholesale_removed": "Wholesale removed",
+            "frozen_sparse_items_removed": "Excluded items removed", "retained_rows": "Records kept",
+            "flagged_rows_retained": "Statistical flags kept"})
+        st.dataframe(audit, hide_index=True, width="stretch")
+        st.caption("Removal columns count distinct records. Statistical flags are a subset of kept records, not an additional exclusion.")
+        st.caption("This refresh updates observations and model scores. It does not measure accuracy on the new period or change the validation results shown above.")
     with st.expander("Feature summary and study limitations"):
         display = importance.copy()
         display["feature"] = display.feature.map(lambda name: FEATURE_NAMES.get(name, name))
@@ -463,11 +521,16 @@ def main():
     except (OSError, ValueError, KeyError, TypeError, AssertionError) as error:
         st.error("The saved dashboard inputs are missing or inconsistent. No forecasts were substituted.")
         st.write("Open Notebook 08 in your project kernel and Run All. It needs the completed 06 and 07 outputs. Do not delete data or restart Notebook 01 just to reopen the dashboard.")
+        st.caption("If you published a refresh in Notebook 09, rerun 09 to verify it. To intentionally reopen the original export, remove only 08_dashboard/refresh_manifest.json; keep its archived files and all model inputs.")
         with st.expander("Details for troubleshooting"):
             st.code(str(error))
         st.stop()
     week = pd.Timestamp(entry["latest_complete_week"])
     st.info(f"Historical demonstration · Observed week: {date_span(week, week + pd.Timedelta(days=6))} · Forecast week: {date_span(week + pd.Timedelta(days=7), week + pd.Timedelta(days=13))}. These are not live warnings.")
+    refresh = entry.get("refresh")
+    if refresh:
+        scored_at = pd.Timestamp(refresh["generated_at"]).tz_convert("Asia/Kuala_Lumpur").strftime("%d %b %Y, %I:%M %p MYT")
+        st.warning(f"Offline refresh · Scores generated {scored_at}. Observations were scored retrospectively; these are not archived timely forecasts. Model, cutoff and validation results are unchanged.")
     history, latest = filter_data(history, latest)
     cols = st.columns(4)
     for col, label, value, help_text in zip(cols,
@@ -479,6 +542,8 @@ def main():
          "Local explanations prepared offline for selected cases. A missing explanation is shown explicitly."]):
         col.metric(label, f"{value:,}", help=help_text)
     st.caption("Choose a location → review an alert → explore its price history. Higher scores mean greater review priority, not verified probabilities.")
+    if entry["forecast_model"]["version"] == "longer_2024_2025":
+        st.caption("Validation evidence is strongest for vegetables. Several other food groups have weak or limited evidence; check About the model before relying on an alert.")
     with st.expander("First visit? A quick guide"):
         steps = st.columns(3)
         steps[0].markdown("**1 · Find your area**")
@@ -491,9 +556,9 @@ def main():
         st.warning("No supported latest forecasts match these filters. Older history may still be available. This does not mean no surge risk.")
     review, details, evidence = st.tabs(["Overview", "Explore prices", "About the model"])
     with review:
-        spotlight(history, latest, explanations, entry["forecast_model"])
+        spotlight(history, latest, explanations, entry["forecast_model"], refresh)
         group_overview(latest)
-        review_list(latest)
+        review_list(latest, refresh)
     with details:
         explore_series(history, latest, explanations, week, manifest["protocol"]["units"])
     with evidence:
