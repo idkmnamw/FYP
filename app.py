@@ -261,8 +261,8 @@ def filter_data(history, latest):
             for key in ["state", "district", "project_group", "item", "premise_type"]:
                 st.session_state.pop(key, None)
         st.button("Reset filters", on_click=reset_filters, width="stretch")
-        chosen = history.copy()
-        forecasts = latest.copy()
+        chosen = history
+        forecasts = latest
         for label, column in [("State", "state"), ("District", "district"), ("Food group", "project_group"),
                               ("Item", "item"), ("Shop type", "premise_type")]:
             options = sorted(chosen[column].dropna().unique().tolist())
@@ -327,9 +327,7 @@ def spotlight(history, latest, explanations, model, refresh=None):
     st.caption(f"Observation support: {coverage}. Shop composition and sparse observations can affect local medians.")
     guidance = group_guidance(row.project_group, model["version"])
     st.caption("Saved validation study guidance: " + guidance)
-    mask = pd.Series(True, index=history.index)
-    for key in SERIES:
-        mask &= history[key].eq(row[key])
+    mask = history[SERIES].eq(row[SERIES]).fillna(False).all(axis=1)
     calendar = pd.date_range(week - pd.Timedelta(weeks=11), week, freq="W-MON")
     prices = history.loc[mask].set_index("week_start").weekly_median_price.reindex(calendar)
     price_history_chart(prices, row.unit, height=2.4, xlabel="Recent eligible weekly medians; gaps remain blank")
@@ -382,7 +380,7 @@ def spotlight(history, latest, explanations, model, refresh=None):
 def review_list(latest, refresh=None):
     st.subheader("Your local price watchlist")
     view = st.radio("Show", ["All monitored prices", "Review alerts", "Unusual patterns", "Priority shortlist"], horizontal=True)
-    shown = latest.sort_values(["model_score", "forecast_id"], ascending=[False, True]).copy()
+    shown = latest.sort_values(["model_score", "forecast_id"], ascending=[False, True])
     capacity = None
     eligible_alerts = int(latest.predicted_surge.sum())
     if view in ["Review alerts", "Priority shortlist"]:
@@ -472,17 +470,12 @@ def explore_series(history, latest, explanations, week, units):
     default = 0
     if not latest.empty:
         first = latest.sort_values("model_score", ascending=False).iloc[0]
-        matches = series[SERIES].eq(first[SERIES]).all(axis=1).to_numpy()
+        matches = series[SERIES].eq(first[SERIES]).fillna(False).all(axis=1).to_numpy()
         default = int(np.flatnonzero(matches)[0])
     index = st.selectbox("Choose an item and location", range(len(series)), index=default, format_func=lambda i: labels[i])
     selected = series.iloc[index]
-    old_mask = pd.Series(True, index=history.index)
-    now_mask = pd.Series(True, index=latest.index)
-    for key in SERIES:
-        old_mask &= history[key].eq(selected[key])
-        now_mask &= latest[key].eq(selected[key])
-    past = history.loc[old_mask].sort_values("week_start")
-    current = latest.loc[now_mask]
+    past = history.loc[history[SERIES].eq(selected[SERIES]).fillna(False).all(axis=1)].sort_values("week_start")
+    current = latest.loc[latest[SERIES].eq(selected[SERIES]).fillna(False).all(axis=1)]
     st.subheader(selected["item"])
     st.caption(f"{selected.state} / {selected.district} · {selected.premise_type} · Price per {selected.unit}")
     window = st.radio("Price history", ["Last 12 weeks", "Last 26 weeks", "All history"], index=1, horizontal=True)

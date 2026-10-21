@@ -1,145 +1,108 @@
 # HargaLens — PriceCatcher FYP
 
-**See local prices clearly.** HargaLens combines Malaysian weekly food prices, next-week surge review, separate anomaly flags and precomputed explanations. It is a historical research prototype; no affordability benefit or stakeholder adoption has been demonstrated.
+**See local prices clearly.** A research prototype for local weekly food prices, next-week surge review, separate anomaly flags and precomputed SHAP explanations. Scores are uncalibrated; affordability benefits and stakeholder adoption have not been established.
 
-## Open your existing dashboard
+## Open the dashboard
 
-From the FYP folder, activate your project environment:
+From the FYP folder:
 
 ```bash
 source .venv/bin/activate
-python -m pip install -r requirements.txt
 python -m streamlit run app.py
 ```
 
-Open the address printed by Streamlit; stop it with Ctrl+C. If you already completed 08, no notebook rerun is needed. If its dashboard manifest is missing, Run All in **08 only** after restoring/completing the matching 06 and 07 outputs. Do not restart 01 merely to reopen results.
+Open Streamlit's printed address. Stop it with Ctrl+C. **Completed notebooks do not need rerunning just to open the dashboard.**
 
-For a first installation, run `python3 -m venv .venv` before activating it. In VS Code, choose **FYP/.venv/bin/python** as the notebook kernel. A terminal's active environment does not change the notebook kernel. JupyterLab can be started with `python -m jupyter lab`.
+For a first installation, create the environment and install dependencies:
 
-## What to keep
-
-| Files | Purpose |
-|---|---|
-| Main notebooks 01–05 | Integration, training-only coverage screening, cleaning, calendar weeks, features/labels and audits |
-| Main notebook 06 | Original chronological model comparison and frozen results |
-| Main notebooks 07–08 | Separate anomaly detector, chosen-model SHAP and dashboard exports |
-| Main notebook 09 | Optional offline observation refresh using the completed longer-history checkpoint; no training or evaluation |
-| `app.py` | One read-only Streamlit dashboard; no model fitting or live downloads |
-| `pricecatcher_config.py` | Shared preparation rules and run locations |
-| `prepare.py` | Prepares missing validation folds when 06 needs them; also provides the optional terminal runner |
-| `research/` | Optional studies 09–14 and their saved evidence for the report |
-| `assets/hargalens-mark.png` | Shared logo and page icon |
-| `requirements.txt`, `.gitignore`, this README | Installation, local-output exclusions and run instructions |
-
-There are only three Python files. The research notebooks are not part of the daily dashboard workflow.
-
-Generated data/models stay in ignored `data/`. Keep completed runs, source snapshots and model package versions for reproducibility. `.ipynb_checkpoints/` and `__pycache__/` can be removed when notebooks are stopped; they are recreated automatically. Keep `.venv/` for the working kernel. Do not delete `data/` to fix a hash error.
-
-## Run a new reproduction
-
-1. Run **01 → 05** in order with Restart Kernel and Run All. Manual 01 starts a separate run, preserving completed experiments and copying a verified local source when available.
-2. Run **06**. It prepares missing expanding folds through `prepare.py`, compares models and freezes the original experiment. Reopening a completed 06 reuses its saved model.
-3. Run **07 → 08**. These reuse completed checkpoints and publish derived dashboard inputs.
-4. For the longer-history prototype, complete research **11 → 12** once after 06, then run **08** again. The separate 07 detector keeps its 2025 reference. No other research notebook is a prerequisite.
-
-Do not run preparation and modelling concurrently. `data/active_run.txt` remembers the active run across kernels. Do not edit it during execution. Explicit `PRICECATCHER_DATA_DIR` and `PRICECATCHER_EXPERIMENT` overrides remain available for advanced/runner use; remove old manual override cells when using the automatic workflow.
-
-The optional command `python prepare.py --rerun-all` runs **01–06** with fresh kernels in a separate reproduction. It does not run 07–08 or the optional studies. Repeating an exposed test period is not fresh independent validation.
-
-## Dashboard and exported files
-
-HargaLens means a clearer view of **harga** (price). Its basket-and-lens logo is reused from one asset. Light and dark themes are supported.
-
-- **Overview:** filters, Spotlight price stories, food-group alert counts, the full review list and CSV export. Spotlight shows up to three highest-score cases within the filters, not confirmed surges. Its downloadable HTML brief preserves dates, model identity, coverage, explanation availability and evidence limitations; a browser can print it as a PDF.
-- **Explore prices:** one item/location/shop type, price unit, 12-week/26-week/full eligible history, observation counts and cached explanations. Missing weeks remain blank; an older prediction never substitutes for an unsupported latest forecast.
-- **About the model:** the displayed candidate's own validation evidence, false-alert rate, training dates, fixed cutoff, support counts and limitations.
-
-Choose **Priority shortlist** in the watchlist to review at most 25, 50 or 100 alerts above the frozen cutoff within your current filters. Cases are ranked by score, then case ID for ties. The dashboard shows how many eligible alerts are outside the shortlist; **Review alerts** restores the full eligible list. Main counters, scores and alert flags do not change. This is a workload view, not an adopted alert policy or a measured accuracy gain for your filters/new dates. Some food groups may receive no shortlist places.
-
-Food-group guidance appears in price stories, the watchlist, Explore prices, coverage summaries and downloaded briefs/CSVs. It describes the saved January–March 2026 longer-history validation study, not a confidence estimate for each case. Vegetables have the strongest evidence but many false alerts; chicken detection is limited; eggs/flour deteriorated; rice/oil have very few validation positives; sugar detection could not be assessed. The original-model view directs users to its own evaluation. Historical price browsing remains available for weak-evidence groups.
-
-The dashboard reads this entry point under the printed active run:
-
-```text
-08_dashboard/dashboard_manifest.json
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
 ```
 
-It points to a model-specific cache under `08_dashboard/<model-hash>/`:
+In VS Code, select **FYP/.venv/bin/python** as the notebook kernel. An activated terminal does not change the notebook kernel. Data/models are local and are not included in Git.
 
-| Table | Contents |
+## The files you need
+
+| Files | Role |
 |---|---|
-| `latest_dashboard.parquet` | Supported latest rows, chosen-model scores/alerts, separate anomaly flags and explanation availability |
-| `shap_explanations.parquet` | Up to 200 highest-score latest explanations and a fixed historical reference sample |
-| `reference_feature_importance.csv` | Descriptive SHAP summary on up to 200 original 2025 training-input rows |
+| Notebooks 01–05 | Integrate, inspect, clean and aggregate data; create exact-week features and labels |
+| Notebook 06 | Compare models chronologically and preserve the original experiment |
+| Notebooks 07–08 | Separate anomaly detector, selected-model SHAP and dashboard exports |
+| `app.py` | Read-only dashboard |
+| `pricecatcher_config.py` | Shared settings and run locations |
+| `prepare.py` | Builds missing evaluation folds when 06 needs them; keep it beside 06 |
+| Notebook 09 | Optional observation refresh, without training |
+| `research/` | Supporting experiments; not a routine execution checklist |
+| `assets/hargalens-mark.png` | Dashboard logo and icon |
+| `requirements.txt`, `.gitignore`, this README | Installation and repository instructions |
 
-08 prefers the latest compatible completed longer-history checkpoint by completion time, never by metric ranking. It verifies checkpoint provenance before exporting that model's scores/SHAP. Without one, a new export clearly uses the original model; an already published longer-history checkpoint cannot silently disappear and downgrade the export. Original models, metrics and the old `08_explanations/` cache are preserved.
+There are **three Python files**. Keep the research notebooks as evidence, including unsuccessful experiments. Keep completed local runs and source snapshots in `data/`. `.venv/` is your working environment; notebook checkpoints and Python caches can be removed when no process is using them and will be recreated.
 
-The app verifies export hashes, model/version consistency, dates, alerts and explanation mapping. It checks the frozen original train/validation/test files before reading **only price, coverage and identifier columns**, not labels, for historical charts. History is eligible original 2025–June 2026 modelling rows plus the latest snapshot, not all raw observations or the added 2024 training history. Streamlit reuses verified data across filters and invalidates its cache when relevant file metadata changes. No model object or SHAP calculation is needed while browsing.
+## Run notebooks only when needed
 
-The saved snapshot describes **22–28 June 2026**, with a forecast horizon of **29 June–5 July 2026**. These are historical dates. Scores are uncalibrated, SHAP is not causal, and the 2025 reference sample does not represent the longer model's entire training population. Missing explanations/forecasts and unsupported locations must remain explicit.
-
-The app, CSV export and price-story brief state observation age as of the current date in Malaysia and whether the snapshot is the latest fully closed calendar week. This describes dates, not complete reporting or timely forecast availability. The app rejects missing/infinite SHAP contributions and anomaly scores; 09 checks all new model scores and explanations before publishing. Failed checks preserve the previous published refresh.
-
-09 also compares supported rows with the original snapshot by food group and state. The app shows both overall counts before filters. Reduced support needs investigation; it is not evidence of worse accuracy and should not be hidden by weakening eligibility. The saved local 09 execution supports 2,946 rows for 12–18 October 2026, versus 5,343 in the June snapshot. It excludes four September records for unknown shop code 22280 and retains 205 statistical price flags across its selected July–October source. Those flags are not confirmed errors or the same list as the 12 training cases.
-
-## Refresh observations without retraining
-
-After completing 08 with the longer-history checkpoint, open **09_refresh_dashboard.ipynb** in the project kernel and **Restart Kernel and Run All**. This main-folder notebook is maintenance; `research/09_source_quality_sensitivity.ipynb` is a separate research study.
-
-Leave `SNAPSHOT_WEEK = None` for the last calendar week fully closed before today in Malaysia, or enter an earlier Monday. The official source must contain observations through that week's Sunday. New source months are downloaded once per snapshot, processed using frozen lookups, eligibility, bounds and egg conversions, then cached and verified. Unknown/blank shop metadata is excluded and counted; statistical flags remain in the inputs. No replacement price is invented. The original June features must reconstruct before newer scores can be published.
-
-Restart/reload the app after 09 finishes. It selects `08_dashboard/refresh_manifest.json` when present, verifies its source/cache hashes, adds refreshed eligible history and displays the actual scoring timestamp and source attrition. New explanations are computed offline for at most 200 latest cases. Browsing still requires no model loading or SHAP computation. Completed derived caches are reused; the original 08 manifest, checkpoints, prepared splits and research evidence are preserved.
-
-These scores are a **retrospective offline demonstration**, not proof of timely forecasts or improved accuracy. Validation precision and group limitations do not change. The workflow refuses to open any monthly file overlapping a registered outcome period, including November under the current plan. Keep that comparison separate. A failed/incomplete download does not replace the published snapshot. To deliberately reopen the original June export, remove **only** `08_dashboard/refresh_manifest.json`, keep its archived caches, and restart the app.
-
-## Optional research evidence
-
-| Notebook in `research/` | Saved finding or purpose |
+| Goal | What to run |
 |---|---|
-| 09 — source quality | Excluding 58 additional suspected training records gave small mixed validation gains; not adopted automatically |
-| 10 — matched-shop features | Mean fold AP declined slightly; original feature list retained |
-| 11 — historical audit | All 12 monthly 2024 files available/schema-compatible; January, July and December sampled |
-| 12 — longer history | Validation AP improved 0.223 → 0.330; eggs/flour deteriorated |
-| 13 — future registration | Optional frozen-model plan for outcome weeks 2–29 November 2026; no future prices/predictions/evaluation loaded |
-| 14 — review readiness | Source-investigation log and validation-only weekly alert workload comparisons; no policy adoption |
+| View completed results | Start `app.py`; no notebook rerun |
+| Reproduce the original experiment | **01 → 08**, using Restart Kernel and Run All in each |
+| Build the longer-history dashboard from scratch | **01 → 06 → research/11 → research/12 → 07 → 08** |
+| Refresh dashboard observations | **09 only**, after completing 08 with the longer-history checkpoint |
+| Investigate training source prices | Final cell of **03** and optional **research/14**; leave preparation/model outputs intact |
 
-Do not rerun studies merely to refresh the dashboard. Their code/input fingerprints preserve separate results; rerunning changed code may create another experiment folder. Current lookup units/geography remain a provisional interpretation of historical metadata. Study 12 retains source rows with unknown metadata in its cache and records exclusions from supplementary training in its metadata/cleaning audits.
+01 starts a separate reproduction and reuses a verified local source when available. 06 prepares missing expanding folds automatically and reuses an already completed model. `data/active_run.txt` remembers the selected run across kernels; do not edit it or run preparation/modelling concurrently.
 
-To inspect training source prices in a completed run, run **only the final cell of 03**. Its regenerated `training_source_context.csv` is evidence, not a decision log. Study 14 preserves manual notes at `14_review_readiness/source_review/<snapshot>/source_review_log.csv`. Neighbour agreement and re-downloading the same record do not independently confirm an error; log confirmations remain user-recorded claims and never change prices/models automatically. Its 12 reviewed cases remain unresolved in the saved run.
+The optional terminal command `python prepare.py --rerun-all` reproduces **01–06** in a separate run. It does not run 07–09 or research studies. Normal notebook **Run All** remains supported. Repeating an exposed test period is reproduction, not fresh independent validation.
 
-To investigate a case, check the exact date, shop, item and unit against a dated receipt, an applicable shop listing or a provider correction. Record the reference and reasoning in the existing log's `evidence_reference` and `evidence_notes`, with `reviewer` and `reviewed_on`. Keep `decision=unresolved` unless that evidence supports `confirmed_error` or `confirmed_valid`; a suspicious pattern alone is insufficient. Rerun 14 to validate/preserve the log, without refitting. Any confirmed correction should be evaluated in a separate documented experiment, preserving the completed model and reserved comparison. No extra review files or user-evaluation materials are required.
+## Use the dashboard
 
-Study 14's whole-validation workload results are:
+- **Overview:** location/item filters, Spotlight price stories, food-group counts, watchlist and CSV export. A downloadable HTML story can be printed as a PDF.
+- **Explore prices:** one local series, unit, observed medians, coverage and cached explanation. Missing weeks remain blank; unsupported forecasts are explicit.
+- **About the model:** the displayed model's own validation results, fixed cutoff, group guidance, coverage and limitations.
 
-| Policy | Average cases/week | Precision | Recall |
-|---|---:|---:|---:|
-| Frozen rule | 946.75 | 23.8% | 69.1% |
-| At most 25/week | 25 | 56.0% | 4.3% |
-| At most 50/week | 50 | 53.3% | 8.2% |
-| At most 100/week | 100 | 49.5% | 15.2% |
+The optional **Priority shortlist** shows up to 25, 50 or 100 above-cutoff alerts within your filters, ranked by score with case ID breaking ties. It shows how many eligible alerts are omitted; **Review alerts** restores the full list. This changes review workload, not model scores, cutoff or main counters. Smaller lists can miss more surges, and their accuracy is not established for new snapshots/filters. Some groups may receive no shortlist places.
 
-All capped cases are vegetables. Keep the current frozen rule: these smaller lists reduce workload but miss more surges. They are exploratory workload evidence, not an accuracy improvement or metrics for arbitrary dashboard filters. No winner was selected. Study 13 remains unchanged; registration is not live evaluation. Earliest planned November evaluation is 30 November subject to data availability. July–September exposure is uncertain.
+Dates, observation age, model identity and study guidance travel with downloads. Group guidance refers to the saved January–March 2026 longer-history study, not confidence in an individual case. Price history remains available for weak-evidence groups.
 
-## Results and interpretation
+The app reads verified cached tables through `08_dashboard/dashboard_manifest.json`, or `refresh_manifest.json` when published by 09. It does not load models, calculate SHAP or download prices while browsing. Historical charts read only identifier, price and coverage columns from frozen original inputs, plus refreshed eligible history; they exclude the added 2024 training history. Local explanations cover up to 200 selected latest cases, and the global summary uses a common original-2025 reference sample.
 
-| Evidence | Model | Appropriate comparison |
-|---|---:|---:|
-| Original 06 April–June test AP | 0.336 | Current-change baseline: 0.151 |
-| Original 06 April–June test F1 | 0.414 | Current-change baseline: 0.225 |
-| January–March validation AP | Longer history: 0.330 | Original: 0.223 |
-| January–March validation F1 | Longer history: 0.354 | Original: 0.332 |
+## Optional refresh and source review
 
-The original test has 3,985 correct alerts, 8,131 false alerts and 3,140 missed surges. It also exceeds the supplementary food-group prevalence baseline (AP 0.225; F1 0.367). This is a saved reproduction of an already exposed test period.
+In 09, leave `SNAPSHOT_WEEK = None` for the latest fully closed calendar week in Malaysia, or choose an earlier Monday. Source observations must extend through its Sunday. The notebook reuses frozen models, cutoff, eligibility, price bounds, lookups and unit conversions; source/cache checks protect completed runs. Unknown metadata is excluded and counted; statistical flags remain. Scores are retrospective offline outputs, not archived timely forecasts or a new accuracy evaluation.
 
-Longer-history validation has 2,702 correct alerts, 8,659 false alerts and 1,210 missed surges. Its precision is 23.8%; 76.2% of alerts are false. Vegetables provide 2,686 correct alerts. Sugar has no positive training/validation cases and cooking-oil positives are scarce. **Independent test performance for this candidate remains unconfirmed. Original 06 test scores do not belong to it.**
+09 compares support with the original snapshot by group/state. The saved local run supports **2,946 rows for 12–18 October 2026**, versus **5,343** in June. It excludes four September records with unknown shop code 22280 and retains 205 statistical flags across selected July–October source records. Support differences require investigation; they do not establish changed accuracy. These flags are separate from the 12 training-source cases.
 
-A surge is an observed local weekly median increase of **at least 10% in the next exact calendar week**, with required coverage/history. Missing outcomes stay unlabelled. Exact-week lags and past-only rolling features are used; learned screening, bounds and imputation use the appropriate training period. Original folds expand within 2025; holdout trains through December 2025, chooses its cutoff on January–March 2026 and evaluates on April–June 2026. Numerical tolerance is `1e-10` percentage points; legacy schema-2 runs retain their strict label comparison.
+Restart/reload the app after refreshing. Failed checks preserve the published pointer. Registered outcome months, including November under the current plan, remain protected. To intentionally reopen the original June export, remove **only** `08_dashboard/refresh_manifest.json`, keep its archived caches and restart the app.
 
-Sparse series, changing shop composition, unresolved suspicious prices, retrospective exclusions and temporal variability limit interpretation. 05 reports 3,271 source series without usable modelling rows and 5,343 latest supported rows. 07 flags 45 latest rows, without labelled anomaly ground truth. Medians are not fixed-shop price indices. External economic drivers are absent. No claim of universal model superiority, causal explanations, representative adoption or reduced inequality/food costs is supported.
+The 12 training-source cases remain unresolved in the saved research evidence. Record independent receipt/listing/provider-correction evidence in the existing `14_review_readiness/source_review/<snapshot>/source_review_log.csv`: `decision`, `evidence_reference`, `evidence_notes`, `reviewer`, `reviewed_on`. Keep a case `unresolved` without sufficient evidence. Neighbour agreement or re-downloading the same price does not confirm correctness. Research 14 validates/preserves user-recorded notes; corrections are not applied automatically. Evaluate confirmed corrections in a separate documented experiment.
 
-## Common problems
+## Research evidence and report boundaries
 
-- **Missing package:** select the project kernel; use `%pip install -r requirements.txt` in a temporary main-notebook cell, then restart. For a macOS LightGBM `libomp.dylib` error, run `brew install libomp` in Terminal.
-- **Missing/changed frozen files:** restore the matching saved run and manifest. Do not bypass hashes, replace them with current hashes, or retrain over the completed experiment. Start 01 only for an intentional separate reproduction.
-- **Source download failure:** a complete verified cache avoids downloads. Otherwise official-source network access is required. This cloud has returned proxy 403; no failed/partial download is accepted as a complete dataset.
-- **Different model environment:** restore the package versions recorded with that checkpoint before loading it. Git does not contain the ignored data/models needed to run the app on another machine.
+| Study in `research/` | Purpose/finding |
+|---|---|
+| 09 — source quality | Excluding 58 suspected training records gave small mixed validation gains; not adopted automatically |
+| 10 — matched-shop features | Mean fold AP declined slightly; original features retained |
+| 11–12 — longer history | Audit 2024, then compare the frozen candidate with additional history; required to reproduce the current longer-history dashboard |
+| 13 — future registration | Frozen-model plan for outcomes 2–29 November 2026; earliest evaluation 30 November, subject to data availability |
+| 14 — review readiness | Source-review log and exploratory validation-only weekly workload comparisons; no policy adopted |
+
+| Evidence | Result | Comparison |
+|---|---|---|
+| Original April–June test | AP **0.336**, F1 **0.414** | Current-change baseline: AP 0.151, F1 0.225 |
+| Longer-history January–March validation | AP **0.330**, F1 **0.354** | Original validation: AP 0.223, F1 0.332 |
+| Longer-history validation alerts | Precision **23.8%**, recall **69.1%** | 2,702 correct alerts, 8,659 false alerts, 1,210 missed surges |
+
+**Original test scores do not establish the longer-history candidate's test performance.** Its independent test performance remains unconfirmed. Vegetables dominate the positive evidence; chicken detection is limited, eggs/flour deteriorated, rice/oil have scarce validation positives, and sugar has no positive training/validation examples. Statistical flags and Isolation Forest outputs are not confirmed errors; no labelled anomaly accuracy is established. SHAP is associative, not causal.
+
+Research 14's validation-only caps of 25/50/100 per week gave precision **56.0%/53.3%/49.5%**, but recall only **4.3%/8.2%/15.2%**; all selected cases were vegetables. These are exploratory whole-period results, not measured performance for dashboard filters or refreshed dates. July–September exposure is uncertain; registration does not establish live forecast availability.
+
+The fixed target is an observed local median increase of **at least 10% in the next exact calendar week**, subject to coverage/history requirements. Missing outcomes stay unlabelled. Screening, bounds and imputation use the appropriate training period; lags and rolling features are past-only. Original expanding folds are within 2025; the holdout trains through December 2025, selects its score cutoff on January–March 2026 and evaluates on April–June 2026. The percentage-point label tolerance is `1e-10`; legacy schema-2 runs retain their strict comparison.
+
+Sparse coverage, changing shop composition, provisional historical lookup assumptions, unresolved prices and absent external economic drivers limit conclusions. No universal model superiority, affordability improvement, reduction in inequality or stakeholder adoption has been demonstrated. Preserve source snapshots, package versions and saved findings when writing the report.
+
+## Troubleshooting
+
+- **Missing dashboard files:** run 08 after restoring/completing its matching checkpoints. For a published refresh, verify with 09. Do not restart 01 merely to reopen results.
+- **Missing package:** select the project kernel, run `%pip install -r requirements.txt` in a temporary main-notebook cell, then restart. For macOS LightGBM's `libomp.dylib` error, use `brew install libomp` in Terminal.
+- **Changed frozen files:** restore the matching snapshot and package versions. Do not replace hashes or delete `data/`. Start 01 only for a deliberate separate reproduction.
+- **Download failure:** new source access requires the official endpoint. A complete verified cache avoids downloads; this cloud has returned proxy 403. Partial downloads are not accepted as complete data.
