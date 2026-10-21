@@ -60,6 +60,8 @@ The optional terminal command `python prepare.py --rerun-all` reproduces **01–
 - **Explore prices:** one local series, unit, observed medians, coverage and cached explanation. Missing weeks remain blank; unsupported forecasts are explicit.
 - **About the model:** the displayed model's own validation results, fixed cutoff, group guidance, coverage and limitations.
 
+Spotlight cards show observed weekly prices, units and changes from the previous week, with separate review and unusual-pattern labels. The selected story pairs its price history with observation support; **Why this score?** opens the explanation summary. The watchlist starts with compact columns; **Show more columns** reveals the full study details, while CSV exports always retain them. **Snapshot dates and coverage** and **Food-group overview** keep supporting information available without crowding the main view. Light and dark themes are supported.
+
 The optional **Priority shortlist** shows up to 25, 50 or 100 above-cutoff alerts within your filters, ranked by score with case ID breaking ties. It shows how many eligible alerts are omitted; **Review alerts** restores the full list. This changes review workload, not model scores, cutoff or main counters. Smaller lists can miss more surges, and their accuracy is not established for new snapshots/filters. Some groups may receive no shortlist places.
 
 Dates, observation age, model identity and study guidance travel with downloads. Group guidance refers to the saved January–March 2026 longer-history study, not confidence in an individual case. Price history remains available for weak-evidence groups.

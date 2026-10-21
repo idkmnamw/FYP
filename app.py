@@ -294,7 +294,7 @@ def spotlight(history, latest, explanations, model, refresh=None):
     if latest.empty:
         return
     st.subheader("HargaLens Spotlight")
-    st.caption("Follow the evidence behind a review case. These are the three highest-scoring supported cases within your filters, not confirmed future surges.")
+    st.caption("Start with a price story. These are the three highest-scoring cases in your filters; a high score is a reason to investigate, not a confirmed surge.")
     candidates = latest.sort_values(["model_score", "forecast_id"], ascending=[False, True]).head(3)
     if st.session_state.get("spotlight_id") not in candidates.forecast_id.tolist():
         st.session_state["spotlight_id"] = candidates.iloc[0].forecast_id
@@ -307,8 +307,16 @@ def spotlight(history, latest, explanations, model, refresh=None):
         with card.container(border=True):
             st.markdown(f"**{row['item']}**")
             st.caption(f"{row.state} / {row.district} · {row.premise_type}")
-            st.metric("Weekly median", f"RM {row.weekly_median_price:.2f}", help=f"Per {row.unit}; observed price, not a predicted next-week price.")
-            st.caption(f"Review score {row.model_score:.3f} · {'Next-week review alert' if row.predicted_surge else 'Below alert cutoff'}")
+            change = row.get("weekly_price_change_pct", np.nan)
+            delta = f"{change:+.1f}% vs previous week" if pd.notna(change) and np.isfinite(change) else None
+            st.metric("Observed weekly price", f"RM {row.weekly_median_price:.2f}", delta=delta, delta_color="inverse",
+                      help="The median of the observed prices. The change compares observed weeks; neither value predicts next week's price.")
+            st.caption(f"Per {row.unit} · Review score {row.model_score:.3f}")
+            status_class = "signal-review" if row.predicted_surge else "signal-monitor"
+            status_label = "Alert to review" if row.predicted_surge else "Below alert cutoff"
+            st.markdown(f'<span class="signal {status_class}">{status_label}</span>', unsafe_allow_html=True)
+            if row.is_anomaly:
+                st.markdown('<span class="signal signal-unusual">Unusual observed pattern</span>', unsafe_allow_html=True)
             st.button("Read this price story", key=f"story_{row.forecast_id}", width="stretch",
                       type="primary" if row.forecast_id == st.session_state["spotlight_id"] else "secondary",
                       on_click=choose_story, args=(row.forecast_id,))
@@ -324,13 +332,18 @@ def spotlight(history, latest, explanations, model, refresh=None):
     st.write(f"The observed weekly median was **RM {row.weekly_median_price:.2f} per {row.unit}**. "
              f"The saved model marks this case **{status.lower()}** for **{forecast_period}**. "
              f"The separate pattern detector says **{pattern.lower()}**.")
-    st.caption(f"Observation support: {coverage}. Shop composition and sparse observations can affect local medians.")
     guidance = group_guidance(row.project_group, model["version"])
-    st.caption("Saved validation study guidance: " + guidance)
     mask = history[SERIES].eq(row[SERIES]).fillna(False).all(axis=1)
     calendar = pd.date_range(week - pd.Timedelta(weeks=11), week, freq="W-MON")
     prices = history.loc[mask].set_index("week_start").weekly_median_price.reindex(calendar)
-    price_history_chart(prices, row.unit, height=2.4, xlabel="Recent eligible weekly medians; gaps remain blank")
+    chart, context = st.columns([2, 1], gap="large")
+    with chart:
+        price_history_chart(prices, row.unit, height=2.6, xlabel="Recent weekly medians; gaps remain blank")
+    with context:
+        st.markdown("**Before you act**")
+        st.write(coverage + ".")
+        st.caption("Shop composition and sparse observations can affect local medians.")
+        st.caption("Saved validation study guidance: " + guidance)
     local = explanations.loc[explanations.cohort.eq("latest") & explanations.explanation_id.eq(row.forecast_id)]
     if local.empty:
         drivers = "No cached local explanation is available. No explanation was inferred or substituted."
@@ -341,8 +354,11 @@ def spotlight(history, latest, explanations, model, refresh=None):
         strongest = contributions.abs().nlargest(3).index
         drivers = "; ".join(f"{FEATURE_NAMES.get(name, name)} {'raises' if contributions[name] > 0 else 'lowers' if contributions[name] < 0 else 'does not change'} the model output"
                             for name in strongest) + "."
-    st.write("**What influenced the score:** " + drivers)
-    st.caption("The score is not a verified chance of a surge. Feature contributions describe this model, not economic causes. The 10% surge target is a classification definition, not a predicted price increase.")
+    if local.empty:
+        st.caption("No cached explanation is available for this case.")
+    with st.expander("Why this score?"):
+        st.write("**What influenced the score:** " + drivers)
+        st.caption("The score is not a verified chance of a surge. Contributions describe this model, not economic causes. The 10% target defines a surge; it is not a predicted price increase.")
     # Self-contained HTML can be shared or printed without a running dashboard.
     facts = {"Forecast case ID": row.forecast_id, "Observed week": date_span(week, week + pd.Timedelta(days=6)), "Forecast week": forecast_period,
              "Observed weekly median": f"RM {row.weekly_median_price:.2f} per {row.unit}",
@@ -409,7 +425,11 @@ def review_list(latest, refresh=None):
     table = table.rename(columns={"project_group": "Food group", "item": "Item", "state": "State", "district": "District",
         "premise_type": "Shop type", "weekly_median_price": "Weekly median (RM)", "unit": "Unit", "model_score": "Review score",
         "predicted_surge": "Next-week alert", "is_anomaly": "Unusual pattern", "has_cached_explanation": "Explanation"})
-    st.dataframe(table, hide_index=True, width="stretch", height=380, column_config={
+    show_details = st.checkbox("Show more columns", help="Add separate state/district fields, food group, explanation availability and study guidance.")
+    display_table = table.assign(Location=table.State + " / " + table.District)
+    visible_columns = list(table.columns) if show_details else ["Item", "Location", "Shop type", "Weekly median (RM)",
+                                                               "Unit", "Next-week alert", "Unusual pattern", "Review score"]
+    st.dataframe(display_table, column_order=visible_columns, hide_index=True, width="stretch", height=380, column_config={
         "Weekly median (RM)": st.column_config.NumberColumn(format="%.2f", help="The middle observed price this week, per listed unit. This is not the cheapest available price."),
         "Review score": st.column_config.NumberColumn(format="%.3f", help="A model score from 0 to 1. Higher scores receive greater review priority; 0.9 is not a verified 90% chance.")})
     st.caption("A review alert concerns a possible increase of at least 10% next week. An unusual-pattern flag concerns the observed price behaviour. Review scores help prioritise investigation; they are not verified probabilities.")
@@ -565,16 +585,29 @@ def main():
     st.set_page_config(page_title="HargaLens | Local food prices", page_icon=str(LOGO), layout="wide")
     st.logo(str(LOGO), size="large", icon_image=str(LOGO))
     st.markdown("""<style>
-        .block-container {max-width: 1400px; padding-top: 2rem;}
-        [data-testid="stMetric"] {background: rgba(8, 127, 140, .08); padding: 1rem; border-radius: .6rem; border: 1px solid rgba(128, 128, 128, .25);}
+        .block-container {max-width: 1400px; padding-top: 1.5rem;}
+        [data-testid="stMain"] {background-image: linear-gradient(180deg, rgba(8, 127, 140, .04), transparent 420px);}
+        [data-testid="stSidebar"] {border-right: 1px solid rgba(128, 128, 128, .15);}
+        [data-testid="stCaptionContainer"] {color: inherit; opacity: .85;}
+        [data-testid="stMetric"] {background: rgba(8, 127, 140, .07); padding: 1rem; border-radius: .8rem; border: 1px solid rgba(128, 128, 128, .2); border-top: 3px solid #087f8c;}
+        [data-testid="stButton"] button[kind="primary"] {background: #087f8c; border-color: #087f8c; color: white;}
+        .signal {display: inline-block; border-radius: 999px; padding: .25rem .65rem; font-size: .8rem; font-weight: 600; margin-bottom: .35rem;}
+        .signal-review {color: #804500; background: #fff0cf;}
+        .signal-monitor {color: #075964; background: #e0f4f2;}
+        .signal-unusual {color: #65358d; background: #f0e7fa;}
         h1, h2, h3 {letter-spacing: -.025em;}
+        @media (max-width: 640px) {
+            .block-container {padding-top: 5rem;}
+            .st-key-snapshot_metrics [data-testid="stHorizontalBlock"] {flex-wrap: wrap;}
+            .st-key-snapshot_metrics [data-testid="stColumn"] {flex: 1 1 calc(50% - .5rem); min-width: 0 !important;}
+        }
         </style>""", unsafe_allow_html=True)
     mark, wordmark = st.columns([1, 10], vertical_alignment="center")
     with mark:
         st.image(str(LOGO), width=82)
     with wordmark:
         st.title("HargaLens")
-        st.caption("See local prices clearly. · Malaysian food price monitoring")
+        st.caption("See local prices clearly. · Your Malaysian food price watch")
     try:
         run = active_run()
         with st.spinner("Checking saved dashboard exports…"):
@@ -589,25 +622,29 @@ def main():
         st.stop()
     week = pd.Timestamp(entry["latest_complete_week"])
     st.info(f"Historical demonstration · Observed week: {date_span(week, week + pd.Timedelta(days=6))} · Forecast week: {date_span(week + pd.Timedelta(days=7), week + pd.Timedelta(days=13))}. These are not live warnings.")
-    st.caption(freshness)
     refresh = entry.get("refresh")
     if refresh:
         scored_at = pd.Timestamp(refresh["generated_at"]).tz_convert("Asia/Kuala_Lumpur").strftime("%d %b %Y, %I:%M %p MYT")
-        st.warning(f"Offline refresh · Scores generated {scored_at}. Observations were scored retrospectively; these are not archived timely forecasts. Model, cutoff and validation results are unchanged.")
-        st.caption(f"Supported local series before filters: {entry['latest_supported_rows']:,} in this snapshot; "
-                   f"{entry['original_supported_rows']:,} in the original snapshot. Differences describe observation support, "
-                   "not accuracy or population coverage. Check the source audit and Notebook 09's group/state comparison.")
+        st.caption(f"Offline refresh · Scored {scored_at} retrospectively. These were not issued as timely forecasts.")
+    with st.expander("Snapshot dates and coverage"):
+        st.caption(freshness)
+        if refresh:
+            st.warning(f"Offline refresh · Scores generated {scored_at}. Observations were scored retrospectively; these are not archived timely forecasts. Model, cutoff and validation results are unchanged.")
+            st.caption(f"Supported local series before filters: {entry['latest_supported_rows']:,} in this snapshot; "
+                       f"{entry['original_supported_rows']:,} in the original snapshot. Differences describe observation support, "
+                       "not accuracy or population coverage. Check the source audit and Notebook 09's group/state comparison.")
     history, latest = filter_data(history, latest)
-    cols = st.columns(4)
-    for col, label, value, help_text in zip(cols,
-        ["Local price series", "Next-week review alerts", "Unusual price patterns", "Ready explanations"],
-        [len(latest), int(latest.predicted_surge.sum()), int(latest.is_anomaly.sum()), int(latest.has_cached_explanation.sum())],
-        ["One item in one district and shop type, with enough data for this saved forecast.",
-         "Cases above the fixed review cutoff for a possible price rise of at least 10% next week. Some alerts will be wrong.",
-         "Observed patterns flagged by a separate anomaly detector. This is not the next-week forecast.",
-         "Local explanations prepared offline for selected cases. A missing explanation is shown explicitly."]):
-        col.metric(label, f"{value:,}", help=help_text)
-    st.caption("Choose a location → review an alert → explore its price history. Higher scores mean greater review priority, not verified probabilities.")
+    with st.container(key="snapshot_metrics"):
+        cols = st.columns(4)
+        for col, label, value, help_text in zip(cols,
+            ["Prices monitored", "Alerts to review", "Unusual patterns", "Explanations ready"],
+            [len(latest), int(latest.predicted_surge.sum()), int(latest.is_anomaly.sum()), int(latest.has_cached_explanation.sum())],
+            ["One item in one district and shop type, with enough data for this saved forecast.",
+             "Cases above the fixed review cutoff for a possible price rise of at least 10% next week. Some alerts will be wrong.",
+             "Observed patterns flagged by a separate anomaly detector. This is not the next-week forecast.",
+             "Local explanations prepared offline for selected cases. A missing explanation is shown explicitly."]):
+            col.metric(label, f"{value:,}", help=help_text)
+    st.caption("Choose an area in the sidebar → open a price story → check its history. An alert means a possible rise of at least 10% next week. Scores are review priorities, not verified probabilities.")
     if entry["forecast_model"]["version"] == "longer_2024_2025":
         st.caption("Validation evidence is strongest for vegetables. Several other food groups have weak or limited evidence; check About the model before relying on an alert.")
     with st.expander("First visit? A quick guide"):
@@ -623,13 +660,14 @@ def main():
     review, details, evidence = st.tabs(["Overview", "Explore prices", "About the model"])
     with review:
         spotlight(history, latest, explanations, entry["forecast_model"], refresh)
-        group_overview(latest)
         review_list(latest, refresh)
+        with st.expander("Food-group overview"):
+            group_overview(latest)
     with details:
         explore_series(history, latest, explanations, week, manifest["protocol"]["units"])
     with evidence:
         model_and_coverage(entry, latest, importance, history)
-    st.caption("HargaLens · Source: Malaysian PriceCatcher · Research prototype · Observed local medians, not a national price index. No affordability benefit has been established.")
+    st.caption("HargaLens · Malaysian PriceCatcher · Research prototype. Observed local medians; no affordability benefit has been established.")
 
 
 if __name__ == "__main__":
