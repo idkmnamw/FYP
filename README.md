@@ -100,6 +100,8 @@ Research 14's validation-only caps of 25/50/100 per week gave precision **56.0%/
 
 The fixed target is an observed local median increase of **at least 10% in the next exact calendar week**, subject to coverage/history requirements. Missing outcomes stay unlabelled. Screening, bounds and imputation use the appropriate training period; lags and rolling features are past-only. Original expanding folds are within 2025; the holdout trains through December 2025, selects its score cutoff on January–March 2026 and evaluates on April–June 2026. The percentage-point label tolerance is `1e-10`; legacy schema-2 runs retain their strict comparison.
 
+**Threshold evidence:** Notebook 05, section 6, already compares 5%, 10%, 15% and a training-percentile threshold on training observations only. Its `training_threshold_comparison.csv` records overall and food-group counts/rates for supported pairs and model-ready rows. Use this as sensitivity evidence for the fixed 10% working definition, not proof of an economically optimal threshold. Reading the existing saved table does not require rerunning preparation or models.
+
 Sparse coverage, changing shop composition, provisional historical lookup assumptions, unresolved prices and absent external economic drivers limit conclusions. No universal model superiority, affordability improvement, reduction in inequality or stakeholder adoption has been demonstrated. Preserve source snapshots, package versions and saved findings when writing the report.
 
 ## Troubleshooting
