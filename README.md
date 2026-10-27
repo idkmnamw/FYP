@@ -116,3 +116,11 @@ To browse the preserved legacy dashboard intentionally, stop Streamlit and back 
 The updated integration notebooks 11–13 intentionally start without stale outputs from the previous checkpoint. Run them once locally to create current executed results. No rerun of 01–10 is needed when the verified comparison and source inputs are already complete. Generated deployment/cache folders are managed automatically; ordinary use needs no folder or hash edits.
 
 Treat generated CSV/JSON/model files as read-only evidence. Make a separate copy for report formatting instead of resaving the frozen originals.
+
+## Local Price Explorer
+
+Open **Local Price Explorer** in the dashboard. Choose one item/unit, shop type and observed week, then click a district or use the district selector. Reset the sidebar's District filter to **All** for wider comparisons. Colours show eligible observed weekly medians; grey means no eligible observation in the selected filters/week. Unmatched district names remain in the table and selector. Latest-week model signals and cached explanations are separate from the observed-price map; historical weeks have no inferred alert.
+
+Comparisons use sampled district medians, with record/shop/day counts and gaps visible. They do not guarantee the cheapest shop, savings or population coverage. Prices may reflect different sampled shops. Changing filters rescales colours. No model, cutoff, prepared data or notebook outputs are changed, and browsing requires no map service or model fitting.
+
+The bundled [district boundaries](assets/malaysia-districts.geojson) are the unmodified 160-feature DOSM [`administrative_2_district.geojson`](https://github.com/dosm-malaysia/data-open/blob/21a78e98efd4cd9b022a27a1bf67d167076b7591/datasets/geodata/administrative_2_district.geojson), retrieved 28 October 2026, under DOSM's [Open Data License](assets/DOSM-OPEN-DATA-LICENSE.md). Name matching ignores case/punctuation and explicitly recognises `W.P.` / `Wilayah Persekutuan`; it does not guess district aliases or historical boundary changes. No official endorsement is implied.

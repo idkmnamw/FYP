@@ -2,6 +2,7 @@
 import hashlib
 import json
 import os
+import re
 from html import escape
 from pathlib import Path
 
@@ -554,6 +555,137 @@ def explore_series(history, latest, explanations, week, units, model=None):
     explain_case(row, explanations, units)
 
 
+def district_key(state, district):
+    """Match explicit state/district names, without guessing similar locations."""
+    def normalise(value):
+        value = re.sub(r"[^a-z0-9]+", " ", str(value).casefold()).strip()
+        return value.removeprefix("wilayah persekutuan ").removeprefix("w p ")
+    return normalise(state) + "|" + normalise(district)
+
+
+def local_price_map(rows, states):
+    """Attach one comparable weekly price to each DOSM district polygon."""
+    boundaries = read_json(REPOSITORY / "assets" / "malaysia-districts.geojson")
+    prices = {district_key(row.state, row.district): row for row in rows.itertuples()}
+    if len(prices) != len(rows):
+        raise ValueError("Multiple prices match a district. Choose one item, unit, shop type and week.")
+    state_keys = {district_key(state, "").split("|")[0] for state in states}
+    features, matched = [], set()
+    for feature in boundaries["features"]:
+        location = feature["properties"]
+        key = district_key(location["state"], location["district"])
+        if key.split("|")[0] not in state_keys:
+            continue
+        row = prices.get(key)
+        if row is not None:
+            matched.add(key)
+        features.append({"type": "Feature", "geometry": feature["geometry"],
+                         "district_key": key, "location": location["state"] + " / " + location["district"],
+                         "price": float(row.weekly_median_price) if row is not None else None,
+                         "coverage": (f"{row.record_count:.0f} records · {row.premise_count:.0f} shops · "
+                                      f"{row.observed_days:.0f} days") if row is not None else "No eligible observation"})
+    return features, sorted(set(prices) - matched)
+
+
+def local_price_explorer(history, latest, week, explanations, units, model):
+    st.subheader("Local Price Explorer")
+    st.write("Where do recorded prices differ? Pick one item and compare districts on the map.")
+    st.caption("Uses your sidebar filters. Reset District to All to compare more locations. "
+               "Colours show observed prices; next-week model alerts are shown separately below.")
+    if history.empty:
+        st.info("No eligible prices match these filters. Broaden the sidebar selection.")
+        return
+    items = history[["item_code", "item", "unit"]].drop_duplicates().sort_values(["item", "item_code", "unit"])
+    left, middle, right = st.columns([2, 1, 1])
+    chosen = left.selectbox("Compare item", range(len(items)), key="map_item",
+                           format_func=lambda i: f"{items.iloc[i]['item']} · {items.iloc[i].unit} · #{items.iloc[i].item_code}")
+    item = items.iloc[chosen]
+    prices = history.loc[history.item_code.eq(item.item_code) & history.unit.eq(item.unit)]
+    shop_type = middle.selectbox("Compare shop type", sorted(prices.premise_type.unique()), key="map_shop")
+    prices = prices.loc[prices.premise_type.eq(shop_type)]
+    weeks = sorted(prices.week_start.unique(), reverse=True)
+    observed = pd.Timestamp(right.selectbox("Observed week", weeks, key="map_week",
+                                           format_func=lambda value: pd.Timestamp(value).strftime("%d %b %Y")))
+    rows = prices.loc[prices.week_start.eq(observed)].copy()
+    st.caption(f"{date_span(observed, observed + pd.Timedelta(days=6))} · RM per {item.unit} · {shop_type}. "
+               "Each district uses its eligible weekly median, not a fixed-shop price index.")
+    features, unmatched = local_price_map(rows, history.state.unique())
+    cols = st.columns(3)
+    cols[0].metric("Districts with observations", len(rows))
+    cols[1].metric("Lowest recorded median", f"RM {rows.weekly_median_price.min():.2f}")
+    cols[2].metric("Highest recorded median", f"RM {rows.weekly_median_price.max():.2f}")
+    context = f"{item.item_code}|{item.unit}|{shop_type}|{observed}|{','.join(f['district_key'] for f in features)}"
+    context_id = hashlib.sha256(context.encode()).hexdigest()[:12]
+    clicked = None
+    if features:
+        spec = {"height": 410,
+                "projection": {"type": "mercator"},
+                "params": [{"name": "district_pick", "select": {"type": "point", "fields": ["district_key"],
+                                                                     "on": "click", "toggle": False}}],
+                "mark": {"type": "geoshape", "strokeWidth": 0.7, "invalid": None},
+                "encoding": {
+                    "color": {"condition": {"test": "datum.coverage === 'No eligible observation'", "value": "#aeb8c2"},
+                              "field": "price", "type": "quantitative", "scale": {"scheme": "tealblues", "zero": False},
+                              "legend": {"title": f"RM / {item.unit}"}},
+                    "stroke": {"condition": {"param": "district_pick", "empty": False, "value": "#f59e0b"},
+                               "value": "#ffffff"},
+                    "tooltip": [{"field": "location", "title": "District"},
+                                {"field": "price", "type": "quantitative", "title": "Weekly median (RM)", "format": ".2f"},
+                                {"field": "coverage", "title": "Observation coverage"}]}}
+        if not any(feature["price"] is not None for feature in features):
+            spec["encoding"]["color"] = {"value": "#aeb8c2"}
+        # Keep geometry inside a layer so older Streamlit versions do not flatten its coordinates.
+        layer = {"data": {"values": features}, "mark": spec.pop("mark"), "encoding": spec.pop("encoding")}
+        spec["layer"] = [layer]
+        event = st.vega_lite_chart(spec=spec, width="stretch", on_select="rerun",
+                                   selection_mode="district_pick", key=f"district_map_{context_id}")
+        selection = event.selection.get("district_pick", [])
+        if selection:
+            clicked = selection[0].get("district_key")
+    st.caption("Click a district, or use the selector below. Grey = no eligible observation in these filters/week. "
+               "The colour scale adjusts to the current selection; compare numeric prices when changing filters.")
+    if unmatched:
+        st.warning(f"{len(unmatched)} observed district(s) could not be matched to the boundary file. "
+                   "They remain available in the selector and comparison table; no location was guessed.")
+    names = {f["district_key"]: f["location"] for f in features}
+    names.update({district_key(row.state, row.district): f"{row.state} / {row.district}" for row in rows.itertuples()})
+    options = sorted(names, key=names.get)
+    selector_key = f"map_detail_{context_id}"
+    if clicked in names and st.session_state.get("last_district_map_click") != (context_id, clicked):
+        st.session_state[selector_key] = clicked
+        st.session_state["last_district_map_click"] = (context_id, clicked)
+    first_observed = district_key(rows.iloc[0].state, rows.iloc[0].district)
+    selected = st.selectbox("District details", options, index=options.index(first_observed),
+                            format_func=names.get, key=selector_key)
+    local = rows.loc[[district_key(row.state, row.district) == selected for row in rows.itertuples()]]
+    if local.empty:
+        st.info("No eligible observation for this district in the selected week. This does not mean prices are low or stable.")
+    else:
+        row = local.iloc[0]
+        st.markdown(f"**{names[selected]} · RM {row.weekly_median_price:.2f} per {row.unit}**")
+        st.caption(f"{int(row.record_count)} price records · {int(row.premise_count)} shops · {int(row.observed_days)} observed days")
+        past = prices.loc[prices.state.eq(row.state) & prices.district.eq(row.district) & prices.week_start.le(observed)]
+        calendar = pd.date_range(observed - pd.Timedelta(weeks=12), observed, freq="W-MON")
+        price_history_chart(past.set_index("week_start").weekly_median_price.reindex(calendar), row.unit, height=2.6)
+        current = latest.loc[latest[SERIES].eq(row[SERIES]).fillna(False).all(axis=1)]
+        if observed != week or current.empty:
+            st.info("No saved next-week forecast for this selected district/week. Older observations are price history only.")
+        else:
+            forecast = current.iloc[0]
+            st.write("**Next-week signal: " + ("Alert to review**" if forecast.predicted_surge else "Below review cutoff**"))
+            st.caption("This is a model signal, not a guaranteed price change. " + group_guidance(row.project_group, model))
+            with st.expander("Why this model signal?"):
+                explain_case(forecast, explanations, units)
+    with st.expander("Compare recorded district prices"):
+        table = rows.sort_values("weekly_median_price")[["state", "district", "weekly_median_price", "record_count", "premise_count", "observed_days"]]
+        table = table.rename(columns={"state": "State", "district": "District", "weekly_median_price": f"Median (RM / {item.unit})",
+                                      "record_count": "Records", "premise_count": "Shops", "observed_days": "Days"})
+        st.dataframe(table, hide_index=True, width="stretch")
+    st.caption("Sampled prices do not guarantee the cheapest shop or savings. Missing/excluded weeks stay blank. "
+               "Boundaries: Department of Statistics Malaysia, data-open (Open Data License). "
+               "Boundary names may differ from historical PriceCatcher locations. No official endorsement.")
+
+
 def model_and_coverage(entry, latest, importance, history):
     model = entry["forecast_model"]
     st.subheader("Evidence for the displayed forecasting model")
@@ -696,12 +828,14 @@ def main():
         steps[2].write("Open Explore prices for the unit, price history, observation counts and available explanation. A missing forecast is not a promise of stable prices.")
     if latest.empty:
         st.warning("No supported latest forecasts match these filters. Older history may still be available. This does not mean no surge risk.")
-    review, details, evidence = st.tabs(["Overview", "Explore prices", "About the model"])
+    review, local_map, details, evidence = st.tabs(["Overview", "Local Price Explorer", "Explore prices", "About the model"])
     with review:
         spotlight(history, latest, explanations, entry["forecast_model"], refresh)
         review_list(latest, refresh, entry["forecast_model"])
         with st.expander("Food-group overview"):
             group_overview(latest)
+    with local_map:
+        local_price_explorer(history, latest, week, explanations, manifest["protocol"]["units"], entry["forecast_model"])
     with details:
         explore_series(history, latest, explanations, week, manifest["protocol"]["units"], entry["forecast_model"])
     with evidence:
