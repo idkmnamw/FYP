@@ -25,15 +25,18 @@ After completing **01–05**, use this single modelling sequence:
 | `07_random_forest.ipynb` | Random Forest, references, Optuna tuning and interpretation |
 | `08_xgboost.ipynb` | XGBoost, references, Optuna tuning and interpretation |
 | `09_lightgbm.ipynb` | LightGBM, references, Optuna tuning and interpretation |
-| `10_model_comparison.ipynb` | Verify matching studies and compare saved results without refitting |
+| `09b_longer_history_lightgbm.ipynb` | Add 2024 history to the reference and tuned LightGBM settings; train and evaluate both |
+| `10_model_comparison.ipynb` | Verify matching studies and compare the four models plus two history candidates without refitting |
 
-Select **Restart Kernel and Run All** in each. The models use the same prepared inputs and can run independently; finish all four before 10. Missing chronological folds are prepared safely through `prepare.py`; the combined training notebook is no longer used. Partial inputs or missing folds belonging to frozen studies stop instead of being overwritten. Keep the configuration and helper beside the notebooks.
+Select **Restart Kernel and Run All** in each. The models use the same prepared inputs and can run independently; finish all four and 09b before 10. Missing chronological folds are prepared safely through `prepare.py`; the combined training notebook is no longer used. Partial inputs or missing folds belonging to frozen studies stop instead of being overwritten. Keep the configuration and helper beside the notebooks.
 
 Each model contains its technique, parameter search, chronological comparison, validation results, plots and report guidance. It saves timestamped outputs to the corresponding `06_logistic_regression/`, `07_random_forest/`, `08_xgboost/` or `09_lightgbm/` folder within the active data run. Do not run notebooks concurrently or edit `data/active_run.txt` during execution.
 
-The four studies use 16 sequential Optuna trials, including reference configurations; repeated trials are possible. Select by mean AP on three expanding 2025 folds. Preprocessing and class weights are fitted using training labels only. Fit selected settings through December 2025, then choose the cutoff on January–March 2026 validation. Different score cutoffs do not imply equal workloads; cutoff-selection metrics are not independent test estimates.
+The four classifier studies use 16 sequential Optuna trials, including reference configurations; repeated trials are possible. Select by mean AP on three expanding 2025 folds. Preprocessing and class weights are fitted using training labels only. Fit selected settings through December 2025, then choose the cutoff on January–March 2026 validation. Different score cutoffs do not imply equal workloads; cutoff-selection metrics are not independent test estimates.
 
-10 verifies exact prepared-input hashes and matching validation row identities/labels, then identifies the candidate under its declared fold-AP rule. It does not select by later validation, retrain a model, change thresholds, read prepared test rows or replace a dashboard checkpoint. Report the different search spaces, nominal trial budgets and runtime.
+**Active longer-history stage:** run `05b_historical_data_audit.ipynb` once if a compatible 2024 audit is not already saved. Its source-cache directories are retained, so existing verified 2024 sources can be reused. After 09, run 09b and then 10. The two history candidates inherit 09's original 31-leaf reference and its selected settings; there is no new parameter search. Each adds 2024 to every fold's training history while retaining that fold's original basket eligibility and unchanged validation features/labels/rows. Historical metadata/units remain provisional; exclusions and training support are audited. Outputs are separate under `09b_longer_history_lightgbm/<timestamp>/{reference,tuned}/`.
+
+10 verifies the same parent 09 study, historical/cleaning hashes, exact prepared-input hashes and matching validation row identities/labels, then identifies the candidate under its declared fold-AP rule. It does not select by later validation, retrain a model, change thresholds, read prepared test rows or replace a dashboard checkpoint. Report the different search spaces, nominal trial budgets and runtime.
 
 The old combined training notebook and duplicate research model notebooks have been removed from the active tree. Exact previous source and executed outputs remain in Git history (for example commit `7cbd4ec`), and local result folders are untouched. Migrated notebooks 07–09 start with empty outputs; 06 retains your latest completed local execution. Their dated report notes, where present, describe earlier saved experiments; update them when quoting a new run.
 
@@ -61,17 +64,17 @@ There are three Python files: `app.py`, `pricecatcher_config.py` and `prepare.py
 python prepare.py --experiment all
 ```
 
-Manual notebook Run All is supported. Optional `python prepare.py --rerun-all` starts a separate reproduction of **01–10**, including all four searches and comparison; it excludes 11–13 and deployment. Repeated execution of exposed periods is not fresh independent validation. The old `--model-mode` option is retired.
+Manual notebook Run All is supported. Optional `python prepare.py --rerun-all` starts a separate reproduction of **01–10**, including all four searches, longer-history fits and comparison; it excludes 11–13 and deployment. Repeated execution of exposed periods is not fresh independent validation. The old `--model-mode` option is retired.
 
 ## Supporting research and report evidence
 
-Keep `research/09`–`research/14` as optional evidence, not part of the new model sequence:
+Keep the remaining `research/09`–`research/14` notebooks as optional evidence, not part of the new model sequence:
 
 | Research study | Purpose |
 |---|---|
 | 09 | Source-quality sensitivity; small mixed gains, not automatically adopted |
 | 10 | Matched-shop features; original features retained |
-| 11–12 | Audit 2024 and test extra history; provenance for the current longer-history checkpoint |
+| Historical 12 | Provenance for the older longer-history dashboard checkpoint; new active history fits are in 09b |
 | 13 | Frozen future comparison registration: outcomes 2–29 November 2026; earliest evaluation 30 November, subject to data availability |
 | 14 | Source-review log and exploratory review-workload comparisons |
 
@@ -97,3 +100,5 @@ Research 14's validation-only 25/50/100 weekly caps increased precision but redu
 - **Missing dashboard exports:** restore the matching checkpoint and use 12, or verify an existing refresh with 13. Do not restart 01 just to open the app.
 - **Downloads:** official source access is needed for uncached data. A verified complete cache avoids downloads; this cloud has previously returned proxy 403. Partial downloads are not accepted.
 - **Caches:** `.venv/` is the working environment; notebook checkpoints/Python caches can be recreated. Do not delete generated model/source evidence while cleaning files.
+
+The active workflow now evaluates added history before model comparison. The older historical experiment is retained only as provenance for the current dashboard; its scores are not automatically assigned to 09b. Comparing six candidates is an exploratory extension after prior outcomes were inspected, not independent confirmation.

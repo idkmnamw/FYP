@@ -1,4 +1,4 @@
-"""Prepare chronological inputs; optionally reproduce the four-model workflow."""
+"""Prepare chronological inputs; optionally reproduce classifier and longer-history studies."""
 import argparse
 import hashlib
 import json
@@ -11,7 +11,7 @@ from importlib import reload, util
 REPOSITORY = Path(__file__).resolve().parent
 EXPERIMENTS = ["fold_1", "fold_2", "fold_3", "holdout"]
 MODELS = ["06_logistic_regression.ipynb", "07_random_forest.ipynb",
-          "08_xgboost.ipynb", "09_lightgbm.ipynb", "10_model_comparison.ipynb"]
+          "08_xgboost.ipynb", "09_lightgbm.ipynb", "09b_longer_history_lightgbm.ipynb", "10_model_comparison.ipynb"]
 
 
 def run_notebook(filename, run_root):
@@ -58,9 +58,11 @@ def main():
         subprocess.run([sys.executable, str(Path(__file__).resolve()), "--experiment", "all"],
                        cwd=REPOSITORY, env=env, check=True)
         os.environ.update({k: env[k] for k in ["PRICECATCHER_DATA_DIR", "PRICECATCHER_EXPERIMENT"]})
+        if not (cfg.DATA_HOME / "11_historical_audit" / "monthly_availability.csv").is_file():
+            run_notebook("05b_historical_data_audit.ipynb", run_root)
         for filename in MODELS:
             run_notebook(filename, run_root)
-        print("Completed preparation and four-model comparison:", run_root)
+        print("Completed preparation, classifier/history studies and comparison:", run_root)
         return
     if args.experiment == "all":
         for name in EXPERIMENTS:
