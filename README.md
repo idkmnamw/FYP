@@ -106,9 +106,9 @@ Sparse coverage, changing shop composition, provisional historical lookup assump
 
 ## Optional model-specific tuning
 
-`research/15_logistic_regression_optuna.ipynb` is the first separate model study: Logistic Regression with a 12-trial Optuna search over regularisation strength. After Notebook 06 has prepared the three folds, Restart Kernel and Run All. Install the updated requirements in the selected kernel first. Outputs go to a separate `15_logistic_regression_optuna/<timestamp>/` folder inside the active data run. Existing models and dashboard inputs are not replaced.
+`research/15_logistic_regression_optuna.ipynb` is the first separate model study: Logistic Regression with a 16-trial Optuna search over regularisation strength (`C`) and class weighting (`None` or `"balanced"`). After Notebook 06 has prepared the three folds, Restart Kernel and Run All. Install the updated requirements in the selected kernel first. Outputs go to a separate `15_logistic_regression_optuna/<timestamp>/` folder inside the active data run. Existing models and dashboard inputs are not replaced.
 
-The study compares the original two Logistic Regression settings and simple baselines on identical 2025 folds, then reports a separate exploratory Jan–Mar 2026 validation comparison. It reads no test data. Reused periods and cutoff-selection results are not independent evidence of improvement. This study is optional; it is not a new step in the dashboard workflow.
+The study compares the original two balanced Logistic Regression settings, their unweighted counterparts and simple baselines on identical 2025 folds, then reports a separate exploratory Jan–Mar 2026 validation comparison. It reads no test data. Reused periods and cutoff-selection results are not independent evidence of improvement. Keep the previous 12-trial C-only outputs as earlier exploratory evidence; the expanded search writes a new timestamped folder. In summary CSVs, `none` denotes unweighted training. This study is optional; it is not a new step in the dashboard workflow.
 
 ## Troubleshooting
 
