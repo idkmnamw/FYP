@@ -1,4 +1,4 @@
-"""Shared settings and run locations. Keep this file beside Notebooks 01–08."""
+"""Shared settings and run locations. Keep this file beside the project notebooks."""
 from pathlib import Path
 from datetime import date, datetime
 import hashlib
@@ -136,8 +136,9 @@ def surge_mask(change_pct, threshold_pct, tolerance_pct=LABEL_TOLERANCE_PCT):
 
 def protect_frozen_preparation():
     """Keep direct notebook runs from replacing inputs of an existing model."""
-    if any((folder / "best_model.joblib").exists() for folder in MODEL_DIRS):
-        raise ValueError("A frozen model exists in this run. To repeat 01–06, Run All in Notebook 01 to start a new run, then continue 02–06. To view this model, Run All in 06. Explicit runner paths remain protected; use --rerun-all for a separate reproduction.")
+    if (any((folder / "best_model.joblib").exists() for folder in MODEL_DIRS)
+            or any(PROJECT_ROOT.glob("0[6-9]_*/*/study_manifest.json"))):
+        raise ValueError("A frozen model exists in this run. To reproduce 01–10, Run All in Notebook 01 to start a separate run, then continue the numbered workflow. To view results, open the matching saved model notebook. Use --rerun-all for a separate reproduction.")
 
 
 def verify_source_snapshot(source_dir=None):

@@ -119,11 +119,11 @@ def load_exports(run_name, signature):
     dashboard_dir = run / "08_dashboard"
     entry = read_json(dashboard_entry(run))
     if entry["schema_version"] != 1:
-        raise ValueError("Unsupported dashboard export. Use the current Notebook 08.")
+        raise ValueError("Unsupported dashboard export. Use the current Notebook 12.")
     cache = inside(dashboard_dir, entry["cache_dir"])
     cache_path = cache / "explanation_manifest.json"
     if file_hash(cache_path) != entry["cache_manifest_sha256"]:
-        raise ValueError("Dashboard cache manifest changed. Run All in Notebook 08 to verify its exports.")
+        raise ValueError("Dashboard cache manifest changed. Run All in Notebook 12 to verify its exports.")
     manifest = read_json(cache_path)
     model = entry["forecast_model"]
     if manifest["forecast_model"] != model or manifest["protocol"]["forecast_sha256"] != model["sha256"]:
@@ -133,7 +133,7 @@ def load_exports(run_name, signature):
         if inside(dashboard_dir, entry["files"][name]) != cache / name:
             raise ValueError("Dashboard table paths disagree with the selected cache.")
         if file_hash(cache / name) != manifest["output_sha256"][name]:
-            raise ValueError(f"Cached table changed: {name}. Rerun the notebook that published this snapshot (08 or 09).")
+            raise ValueError(f"Cached table changed: {name}. Rerun the notebook that published this snapshot (12 or 13).")
     if "refresh" in entry:
         refresh = entry["refresh"]
         original_path = dashboard_dir / "dashboard_manifest.json"
@@ -615,8 +615,8 @@ def main():
         freshness = snapshot_freshness(entry["latest_complete_week"])
     except (OSError, ValueError, KeyError, TypeError, AssertionError) as error:
         st.error("The saved dashboard inputs are missing or inconsistent. No forecasts were substituted.")
-        st.write("Open Notebook 08 in your project kernel and Run All. It needs the completed 06 and 07 outputs. Do not delete data or restart Notebook 01 just to reopen the dashboard.")
-        st.caption("If you published a refresh in Notebook 09, rerun 09 to verify it. To intentionally reopen the original export, remove only 08_dashboard/refresh_manifest.json; keep its archived files and all model inputs.")
+        st.write("Open Notebook 12 in your project kernel and Run All. It needs the saved forecasting checkpoint and completed Notebook 11 outputs. Do not delete data or restart Notebook 01 just to reopen the dashboard.")
+        st.caption("If you published a refresh in Notebook 13, rerun 13 to verify it. To intentionally reopen the original export, remove only 08_dashboard/refresh_manifest.json; keep its archived files and all model inputs.")
         with st.expander("Details for troubleshooting"):
             st.code(str(error))
         st.stop()
@@ -632,7 +632,7 @@ def main():
             st.warning(f"Offline refresh · Scores generated {scored_at}. Observations were scored retrospectively; these are not archived timely forecasts. Model, cutoff and validation results are unchanged.")
             st.caption(f"Supported local series before filters: {entry['latest_supported_rows']:,} in this snapshot; "
                        f"{entry['original_supported_rows']:,} in the original snapshot. Differences describe observation support, "
-                       "not accuracy or population coverage. Check the source audit and Notebook 09's group/state comparison.")
+                       "not accuracy or population coverage. Check the source audit and Notebook 13's group/state comparison.")
     history, latest = filter_data(history, latest)
     with st.container(key="snapshot_metrics"):
         cols = st.columns(4)
