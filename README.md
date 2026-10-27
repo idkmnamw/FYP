@@ -114,6 +114,8 @@ The study compares the original two balanced Logistic Regression settings, their
 
 `research/17_xgboost_optuna.ipynb` is Model 3: XGBoost with the same chronological protocol and 16-trial budget. It tunes depth, minimum child weight, L2 regularisation and training-only positive weighting, with 150 rounds and learning rate 0.05 fixed. Reuse the prepared inputs and Run All; other model studies do not need rerunning. Separate outputs go to `17_xgboost_optuna/<timestamp>/` within the active data run. Existing results and dashboard checkpoints remain unchanged.
 
+`research/18_lightgbm_optuna.ipynb` is Model 4: LightGBM with the same chronological protocol and 16-trial budget. It tunes leaf count, minimum child samples, L2 regularisation and class weighting, with 150 rounds and learning rate 0.05 fixed. Run All using existing prepared inputs. Outputs go to `18_lightgbm_optuna/<timestamp>/` within the active data run. This 2025-trained exploratory study does not replace the longer-history dashboard model or access test data. Compare matching periods and rows across studies 15–18.
+
 ## Troubleshooting
 
 - **Missing dashboard files:** run 08 after restoring/completing its matching checkpoints. For a published refresh, verify with 09. Do not restart 01 merely to reopen results.
