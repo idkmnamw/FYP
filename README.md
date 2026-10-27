@@ -110,6 +110,8 @@ Sparse coverage, changing shop composition, provisional historical lookup assump
 
 The study compares the original two balanced Logistic Regression settings, their unweighted counterparts and simple baselines on identical 2025 folds, then reports a separate exploratory Jan–Mar 2026 validation comparison. It reads no test data. Reused periods and cutoff-selection results are not independent evidence of improvement. Keep the previous 12-trial C-only outputs as earlier exploratory evidence; the expanded search writes a new timestamped folder. In summary CSVs, `none` denotes unweighted training. This study is optional; it is not a new step in the dashboard workflow.
 
+`research/16_random_forest_optuna.ipynb` is Model 2: a standalone Random Forest study using the same folds, AP objective and 16-trial budget. It tunes depth, leaf support, feature sampling and class weighting, with 150 trees fixed. Run All using existing prepared inputs; completing Logistic Regression first is optional. Outputs go to `16_random_forest_optuna/<timestamp>/` within the active data run. Compare only matching input periods/rows; neither study reads test data or replaces the dashboard model.
+
 ## Troubleshooting
 
 - **Missing dashboard files:** run 08 after restoring/completing its matching checkpoints. For a published refresh, verify with 09. Do not restart 01 merely to reopen results.
