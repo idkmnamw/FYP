@@ -40,6 +40,14 @@ In VS Code, select **FYP/.venv/bin/python** as the notebook kernel. An activated
 
 There are **three Python files**. Keep the research notebooks as evidence, including unsuccessful experiments. Keep completed local runs and source snapshots in `data/`. `.venv/` is your working environment; notebook checkpoints and Python caches can be removed when no process is using them and will be recreated.
 
+## Start model-by-model training after Notebook 05
+
+For the new workflow, run **01 → 05 → `06_logistic_regression.ipynb`**. The new 06 covers the first model only: explanation, reference configurations, Optuna tuning, validation, plots and saved model/predictions. Use Restart Kernel and Run All. It can prepare missing chronological folds through `prepare.py` without running the historical multi-model notebook. Existing complete folds are reused; partial inputs or missing folds in saved experiments stop rather than being replaced. It reuses the verified local source for new fold preparation.
+
+Outputs are separate: `<active run>/06_logistic_regression/<timestamp>/`. Other model notebooks and dashboard integration will follow separately. No original results are reset and no dashboard checkpoint is replaced. Earlier inspected periods remain exposed. `research/15_logistic_regression_optuna.ipynb` is the previous research version; use the new root notebook for this workflow.
+
+The older `06_model_training_and_evaluation.ipynb` remains the historical multi-model experiment used by the existing dashboard/reproduction workflow below. Do not run both 06 notebooks as sequential steps. Existing 07–09 filenames still refer to the original anomaly/SHAP/refresh stages; their numbering has not yet been changed.
+
 ## Run notebooks only when needed
 
 | Goal | What to run |
