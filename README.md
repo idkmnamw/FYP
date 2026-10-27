@@ -38,19 +38,23 @@ The four classifier studies use 16 sequential Optuna trials, including reference
 
 10 verifies the same parent 09 study, historical/cleaning hashes, exact prepared-input hashes and matching validation row identities/labels, then identifies the candidate under its declared fold-AP rule. It does not select by later validation, retrain a model, change thresholds, read prepared test rows or replace a dashboard checkpoint. Report the different search spaces, nominal trial budgets and runtime.
 
-The old combined training notebook and duplicate research model notebooks have been removed from the active tree. Exact previous source and executed outputs remain in Git history (for example commit `7cbd4ec`), and local result folders are untouched. Migrated notebooks 07–09 start with empty outputs; 06 retains your latest completed local execution. Their dated report notes, where present, describe earlier saved experiments; update them when quoting a new run.
+The old combined training notebook and duplicate research model notebooks have been removed from the active tree. Exact previous source and executed outputs remain in Git history (for example commit `7cbd4ec`), and local result folders are untouched. Saved model notebook outputs describe the last local execution; your completed model studies and results are preserved. Their dated report notes, where present, describe earlier saved experiments; update them when quoting a new run.
 
 ## Existing dashboard and later stages
 
 | Notebook | Purpose |
 |---|---|
-| `11_anomaly_detection.ipynb` | Training-only Isolation Forest |
-| `12_shap_and_dashboard_inputs.ipynb` | Precompute selected explanations and dashboard tables |
+| `11_anomaly_detection.ipynb` | Pin 10’s candidate/cutoff and fit or reuse a separate 2025-reference Isolation Forest |
+| `12_shap_and_dashboard_inputs.ipynb` | Verify the pinned candidate, precompute SHAP, and publish its own metrics/group evidence |
 | `13_refresh_dashboard.ipynb` | Refresh observations using the frozen dashboard model |
 
 Renumbering does not change the existing artifact directories `06_models`, `07_anomalies` or `08_dashboard`. The dashboard continues using its verified saved checkpoint, independently of the retired source notebook. Opening the app requires no notebook rerun. Anomaly flags are not confirmed errors or supervised surge labels. SHAP describes model contributions, not economic causes.
 
-**Current integration boundary:** 11–13 use the existing saved forecasting checkpoint and, when available, its matching longer-history extension. 10 does not deploy its candidate into those outputs. A fresh run of 01–10 alone is a model experiment, not a replacement dashboard export. On a new run without the existing checkpoint, restore the matching completed dashboard run or complete a separately reviewed integration before using 11–13. Never rename model files or substitute another experiment's metrics to bypass checks.
+**Deployment workflow:** once 10 is complete, run **11 → 12 → 13**. No legacy combined-training checkpoint is required. 11 freezes 10's candidate and cutoff in `11_deployment/deployment_selection.json`; later comparisons do not silently replace it. A compatible original anomaly detector is reused by exact training hash/formulas/settings/version, otherwise a separate training-only detector is fitted. It is not retrained merely because the classifier changed.
+
+12 publishes a separate `08_dashboard/deployments/<id>/<export>/` export, then writes `08_dashboard/active_deployment.json` **last**, after score consistency, SHAP additivity and hash checks pass. The app follows that pointer and displays the selected candidate's own validation metrics and group guidance. Old exports/refreshes stay intact, and failed builds leave the old dashboard active. 13 refreshes the active model without fitting or changing the cutoff. Derived explanations and table reads are offline; the app never fits a model or computes SHAP.
+
+For normal use, open the app. To update observations, run **13 only**. To verify/rebuild the same selected-model handoff, run **11 then 12**, followed by 13 if needed; do not restart 01–10. Pinning a future replacement needs an explicit new deployment decision, not editing hashes. Current validation/cutoff evidence remains exploratory and is not an untouched test. The existing November registration refers to its recorded checkpoints; deploying a new model does not amend that protocol or establish timely archived forecasts for it.
 
 The app provides local filters, price stories/history, alerts, unusual patterns, cached explanations and downloads. The optional shortlist limits review workload, not model scores; omitted alerts may contain surges. Dates, units and coverage remain visible. Some rows have no cached explanation.
 
@@ -97,8 +101,18 @@ Research 14's validation-only 25/50/100 weekly caps increased precision but redu
 
 - **Missing package:** install requirements in the selected notebook kernel, restart and Run All. On macOS, LightGBM may require `brew install libomp`.
 - **Changed or incomplete frozen inputs:** restore the matching snapshot; do not replace hashes or delete `data/`. Start 01 only for an intentional separate reproduction.
-- **Missing dashboard exports:** restore the matching checkpoint and use 12, or verify an existing refresh with 13. Do not restart 01 just to open the app.
+- **Missing dashboard exports:** run 11 then 12 to verify the selected checkpoint, or verify an existing refresh with 13. Do not restart 01 just to open the app.
 - **Downloads:** official source access is needed for uncached data. A verified complete cache avoids downloads; this cloud has previously returned proxy 403. Partial downloads are not accepted.
 - **Caches:** `.venv/` is the working environment; notebook checkpoints/Python caches can be recreated. Do not delete generated model/source evidence while cleaning files.
 
 The active workflow now evaluates added history before model comparison. The older historical experiment is retained only as provenance for the current dashboard; its scores are not automatically assigned to 09b. Comparing six candidates is an exploratory extension after prior outcomes were inspected, not independent confirmation.
+
+## Reading model limitations
+
+The app's About the model tab shows the pinned candidate, its exact cutoff, the validation period and actual group support/detection. Story text and CSV guidance use that same model's group evidence. A missing or below-cutoff alert does not imply stable prices. Vegetables may dominate correct alerts; chicken, eggs and flour can miss most surges, while oil/rice/sugar have too few positive cases for broad claims. False alerts remain review work, not automatic consumer or policy warnings. Model integration does not repair unresolved source prices, add external drivers or prove affordability benefits.
+
+To browse the preserved legacy dashboard intentionally, stop Streamlit and back up/remove only `08_dashboard/active_deployment.json`, then restart. Do not delete models, data or manifests inside preserved caches. A pending new pin still prevents refresh of a different model by accident; finish the intended deployment or make a documented rollback decision before refreshing.
+
+The updated integration notebooks 11–13 intentionally start without stale outputs from the previous checkpoint. Run them once locally to create current executed results. No rerun of 01–10 is needed when the verified comparison and source inputs are already complete. Generated deployment/cache folders are managed automatically; ordinary use needs no folder or hash edits.
+
+Treat generated CSV/JSON/model files as read-only evidence. Make a separate copy for report formatting instead of resaving the frozen originals.

@@ -45,6 +45,19 @@ GUIDANCE_REFERENCE = "Saved FYP longer-history validation study, January–March
 
 def group_guidance(group, version):
     """Qualitative findings from saved study 12, not per-case confidence estimates."""
+    if isinstance(version, dict):
+        evidence = version.get("group_evidence", {}).get(group)
+        if evidence is not None:
+            positives, detected = int(evidence["positives"]), int(evidence["tp"])
+            if positives == 0:
+                return "No positive validation cases; surge detection could not be assessed. Check observed prices."
+            support = f"Detected {detected} of {positives} validation surges. "
+            if positives < 20:
+                return support + "Very limited support; avoid broad reliability claims."
+            if evidence.get("recall", 0) < 0.25:
+                return support + "Most surges were missed. Prioritise price history; below-cutoff scores need care."
+            return support + f"Validation alert precision was {evidence['precision']:.1%}; alerts need investigation."
+        version = version["version"]
     if version != "longer_2024_2025":
         return "Consult this model's own saved evaluation; longer-history study guidance does not apply."
     return GROUP_GUIDANCE.get(group, "No group-specific study guidance is available. Check observed prices and coverage.")
@@ -93,21 +106,36 @@ def export_signature(run):
     """Invalidate Streamlit's cache when an export or frozen history file changes."""
     entry_path = dashboard_entry(run)
     entry = read_json(entry_path)
-    cache = inside(run / "08_dashboard", entry["cache_dir"])
+    cache = inside(dashboard_directory(run), entry["cache_dir"])
     paths = [entry_path, cache / "explanation_manifest.json"]
+    pointer = run / "08_dashboard" / "active_deployment.json"
+    if pointer.exists():
+        paths.append(pointer)
     paths += [cache / name for name in TABLES]
     if "refresh" in entry:
         record_path = inside(run, entry["refresh"]["source_manifest"])
-        paths += [run / "08_dashboard" / "dashboard_manifest.json", record_path,
+        paths += [dashboard_directory(run) / "dashboard_manifest.json", record_path,
                   record_path.parent / "selected_daily_prices.parquet", cache / "refresh_history.parquet"]
     paths += [run / "experiments" / "holdout" / "05_modelling" / f"{split}.parquet"
               for split in ["train", "validation", "test"]]
     return tuple((str(path), path.stat().st_size, path.stat().st_mtime_ns) for path in paths)
 
 
+def dashboard_directory(run):
+    base = run / "08_dashboard"
+    pointer = base / "active_deployment.json"
+    if not pointer.is_file():
+        return base
+    record = read_json(pointer)
+    folder = inside(base, record["directory"])
+    if not folder.is_relative_to((base / "deployments").resolve()):
+        raise ValueError("Invalid active dashboard deployment directory.")
+    return folder
+
+
 def dashboard_entry(run):
     """A published refresh takes precedence; inconsistent files are never hidden."""
-    folder = run / "08_dashboard"
+    folder = dashboard_directory(run)
     refresh = folder / "refresh_manifest.json"
     return refresh if refresh.is_file() else folder / "dashboard_manifest.json"
 
@@ -116,7 +144,7 @@ def dashboard_entry(run):
 def load_exports(run_name, signature):
     """Verify cached files, then read display data only: no models or labels."""
     run = Path(run_name)
-    dashboard_dir = run / "08_dashboard"
+    dashboard_dir = dashboard_directory(run)
     entry = read_json(dashboard_entry(run))
     if entry["schema_version"] != 1:
         raise ValueError("Unsupported dashboard export. Use the current Notebook 12.")
@@ -332,7 +360,7 @@ def spotlight(history, latest, explanations, model, refresh=None):
     st.write(f"The observed weekly median was **RM {row.weekly_median_price:.2f} per {row.unit}**. "
              f"The saved model marks this case **{status.lower()}** for **{forecast_period}**. "
              f"The separate pattern detector says **{pattern.lower()}**.")
-    guidance = group_guidance(row.project_group, model["version"])
+    guidance = group_guidance(row.project_group, model)
     mask = history[SERIES].eq(row[SERIES]).fillna(False).all(axis=1)
     calendar = pd.date_range(week - pd.Timedelta(weeks=11), week, freq="W-MON")
     prices = history.loc[mask].set_index("week_start").weekly_median_price.reindex(calendar)
@@ -368,7 +396,7 @@ def spotlight(history, latest, explanations, model, refresh=None):
              "Evidence status": model["evidence_status"]}
     facts["Food-group study guidance"] = guidance
     facts["Snapshot freshness"] = snapshot_freshness(week)
-    facts["Guidance reference"] = GUIDANCE_REFERENCE if model["version"] == "longer_2024_2025" else "Consult this model's own evaluation."
+    facts["Guidance reference"] = model.get("guidance_reference") or (GUIDANCE_REFERENCE if model["version"] == "longer_2024_2025" else "Consult this model's own evaluation.")
     if refresh:
         facts["Snapshot type"] = refresh["snapshot_type"]
         facts["Scores generated at"] = refresh["generated_at"]
@@ -393,7 +421,7 @@ def spotlight(history, latest, explanations, model, refresh=None):
     st.caption("Share the brief or open it in a browser and print it as a PDF. Dates, model identity, support and limitations travel with the case.")
 
 
-def review_list(latest, refresh=None):
+def review_list(latest, refresh=None, model=None):
     st.subheader("Your local price watchlist")
     view = st.radio("Show", ["All monitored prices", "Review alerts", "Unusual patterns", "Priority shortlist"], horizontal=True)
     shown = latest.sort_values(["model_score", "forecast_id"], ascending=[False, True])
@@ -420,7 +448,7 @@ def review_list(latest, refresh=None):
     table["predicted_surge"] = table.predicted_surge.map({1: "Review next week", 0: "Below alert cutoff"})
     table["is_anomaly"] = table.is_anomaly.map({True: "Flagged", False: "Not flagged"})
     table["has_cached_explanation"] = table.has_cached_explanation.map({True: "Available", False: "Not cached"})
-    table["Study guidance"] = [group_guidance(group, version)
+    table["Study guidance"] = [group_guidance(group, model or version)
                                for group, version in zip(shown.project_group, shown.forecast_model_version)]
     table = table.rename(columns={"project_group": "Food group", "item": "Item", "state": "State", "district": "District",
         "premise_type": "Shop type", "weekly_median_price": "Weekly median (RM)", "unit": "Unit", "model_score": "Review score",
@@ -439,7 +467,7 @@ def review_list(latest, refresh=None):
     download["Forecast week ending"] = shown.next_week_end.dt.strftime("%Y-%m-%d").to_numpy()
     download["Forecast model version"] = shown.forecast_model_version.to_numpy()
     download["Snapshot freshness"] = snapshot_freshness(shown.week_start.iloc[0])
-    download["Guidance reference"] = [GUIDANCE_REFERENCE if version == "longer_2024_2025" else "Consult this model's own evaluation."
+    download["Guidance reference"] = [(model.get("guidance_reference") if model else None) or (GUIDANCE_REFERENCE if version == "longer_2024_2025" else "Consult this model's own evaluation.")
                                      for version in shown.forecast_model_version]
     download["Review view"] = view
     download["Shortlist capacity"] = capacity
@@ -480,7 +508,7 @@ def explain_case(row, explanations, units):
         st.caption(f"Baseline {case.base_value:.3f} + contributions = raw output {case.raw_output:.3f}; review score {case.model_score:.3f}. Units: {units}.")
 
 
-def explore_series(history, latest, explanations, week, units):
+def explore_series(history, latest, explanations, week, units, model=None):
     series = history[IDENTIFIERS[:-1]].drop_duplicates().sort_values(["item", "state", "district", "premise_type", "item_code"])
     if series.empty:
         st.info("No eligible history matches these filters.")
@@ -522,14 +550,14 @@ def explore_series(history, latest, explanations, week, units):
     cols[2].metric("Next-week alert", "Review" if row.predicted_surge else "Below cutoff")
     cols[3].metric("Unusual pattern", "Flagged" if row.is_anomaly else "Not flagged")
     st.caption(f"Unit: {row.unit}. Current week: {int(row.record_count)} price records, {int(row.premise_count)} shops, {int(row.observed_days)} observed days. No alert does not guarantee stable prices.")
-    st.caption("Saved validation study guidance: " + group_guidance(row.project_group, row.forecast_model_version))
+    st.caption("Saved validation study guidance: " + group_guidance(row.project_group, model or row.forecast_model_version))
     explain_case(row, explanations, units)
 
 
 def model_and_coverage(entry, latest, importance, history):
     model = entry["forecast_model"]
     st.subheader("Evidence for the displayed forecasting model")
-    version = "Longer history (2024–2025)" if model["version"] == "longer_2024_2025" else "Original 2025 reference"
+    version = model.get("display_name") or ("Longer history (2024–2025)" if model["version"] == "longer_2024_2025" else "Original 2025 reference")
     st.write(f"**{version}** · training {model['training_start']} through {model['training_end']}")
     st.write(model["evidence_status"])
     period = model["validation_period"]
@@ -547,15 +575,26 @@ def model_and_coverage(entry, latest, importance, history):
         st.warning(f"In this validation period, {(1 - precision):.1%} of alerts were false alarms. Alerts require investigation.")
     if model["version"] == "longer_2024_2025":
         st.write("The saved longer-history study improves overall validation ranking, mainly for vegetables. Eggs and flour deteriorate. Sugar has no positive training/validation examples; cooking-oil positives are scarce. Independent test performance for this candidate remains unconfirmed.")
+    if model.get("group_evidence"):
+        groups = pd.DataFrame.from_dict(model["group_evidence"], orient="index")
+        groups.index.name = "Food group"
+        st.subheader("Validation evidence by food group")
+        st.dataframe(groups[["rows", "positives", "tp", "fp", "fn", "precision", "recall"]].reset_index(),
+                     hide_index=True, width="stretch")
+        total = groups.tp.sum()
+        if total > 0 and "Vegetables" in groups.index:
+            st.warning(f"Vegetables contributed {groups.loc['Vegetables', 'tp']/total:.1%} of correct validation alerts. "
+                       "Overall performance does not establish reliable detection across all foods.")
+        st.caption("Fixed validation period and selected cutoff; these metrics are not recomputed by dashboard filters.")
     st.subheader("Coverage in your current filters")
     counts = latest.groupby("project_group").agg(supported_rows=("forecast_id", "size"),
         surge_alerts=("predicted_surge", "sum"), unusual_patterns=("is_anomaly", "sum"),
         cached_explanations=("has_cached_explanation", "sum")).reset_index()
-    counts["Study guidance"] = counts.project_group.map(lambda group: group_guidance(group, model["version"]))
+    counts["Study guidance"] = counts.project_group.map(lambda group: group_guidance(group, model))
     st.dataframe(counts.rename(columns={"project_group": "Food group", "supported_rows": "Supported rows",
         "surge_alerts": "Surge alerts", "unusual_patterns": "Unusual patterns", "cached_explanations": "Cached explanations"}),
         hide_index=True, width="stretch")
-    st.caption("Group guidance summarises the saved January–March 2026 longer-history validation study. "
+    st.caption("Group guidance summarises this model's saved January–March 2026 validation results. "
                "It is not a confidence estimate for an individual alert or a new period. Price history remains available for groups with weak evidence.")
     st.caption(f"{history[SERIES].drop_duplicates().shape[0]:,} local series have eligible historical rows in these filters. Supported-row counts are not population coverage. Places/items outside this study cannot be assessed here.")
     st.write("The separate anomaly detector uses a January–December 2025 reference. Its flags identify unusual patterns; there is no labelled anomaly ground truth to measure accuracy.")
@@ -645,8 +684,8 @@ def main():
              "Local explanations prepared offline for selected cases. A missing explanation is shown explicitly."]):
             col.metric(label, f"{value:,}", help=help_text)
     st.caption("Choose an area in the sidebar → open a price story → check its history. An alert means a possible rise of at least 10% next week. Scores are review priorities, not verified probabilities.")
-    if entry["forecast_model"]["version"] == "longer_2024_2025":
-        st.caption("Validation evidence is strongest for vegetables. Several other food groups have weak or limited evidence; check About the model before relying on an alert.")
+    if entry["forecast_model"]["version"] == "longer_2024_2025" or entry["forecast_model"].get("group_evidence"):
+        st.caption("Food-group support and detection differ substantially. Check About the model before relying on an alert.")
     with st.expander("First visit? A quick guide"):
         steps = st.columns(3)
         steps[0].markdown("**1 · Find your area**")
@@ -660,11 +699,11 @@ def main():
     review, details, evidence = st.tabs(["Overview", "Explore prices", "About the model"])
     with review:
         spotlight(history, latest, explanations, entry["forecast_model"], refresh)
-        review_list(latest, refresh)
+        review_list(latest, refresh, entry["forecast_model"])
         with st.expander("Food-group overview"):
             group_overview(latest)
     with details:
-        explore_series(history, latest, explanations, week, manifest["protocol"]["units"])
+        explore_series(history, latest, explanations, week, manifest["protocol"]["units"], entry["forecast_model"])
     with evidence:
         model_and_coverage(entry, latest, importance, history)
     st.caption("HargaLens · Malaysian PriceCatcher · Research prototype. Observed local medians; no affordability benefit has been established.")

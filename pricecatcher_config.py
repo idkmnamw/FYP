@@ -251,3 +251,112 @@ def latest_longer_history(model_dir):
                 and record.get("prepared_test_accessed") is False):
             candidates.append(path)
     return max(candidates, key=lambda path: path.stat().st_mtime_ns).parent if candidates else None
+
+
+def verify_saved_study(folder):
+    """Verify a locally trained study before inference; never fit or repair it."""
+    folder = Path(folder).resolve()
+    if not folder.is_relative_to(PROJECT_ROOT.resolve()):
+        raise ValueError("Study must belong to the active run.")
+    record = json.loads((folder / "study_manifest.json").read_text())
+    if record.get("status") != "completed":
+        raise ValueError("The selected study is incomplete. Restore its completed outputs.")
+    def check(path, expected):
+        with Path(path).open("rb") as handle:
+            actual = hashlib.file_digest(handle, "sha256").hexdigest()
+        if actual != expected:
+            raise ValueError(f"Frozen study input/output changed: {path}")
+    for name, expected in record["output_sha256"].items():
+        check(folder / name, expected)
+    for name, expected in record["input_sha256"].items():
+        check(PROJECT_ROOT / name, expected)
+    for name, expected in record.get("additional_input_sha256", {}).items():
+        check(Path(name), expected)
+    selection = json.loads((folder / "selection.json").read_text())
+    if selection != record["selection"]:
+        raise ValueError("Study selection and manifest disagree.")
+    cutoff = selection.get("score_cutoff")
+    if not isinstance(cutoff, (int, float)) or not np.isfinite(cutoff) or not 0 <= cutoff <= 1:
+        raise ValueError("Selected cutoff must be a finite model score in [0, 1].")
+    if selection["surge_threshold_pct"] != 10:
+        raise ValueError("The dashboard requires the existing 10% surge definition.")
+    return record
+
+
+def dashboard_candidate():
+    """Pin 10's declared candidate once; later comparisons cannot silently replace it."""
+    import csv
+    pin_path = PROJECT_ROOT / "11_deployment" / "deployment_selection.json"
+    def digest(path):
+        with Path(path).open("rb") as handle:
+            return hashlib.file_digest(handle, "sha256").hexdigest()
+    if pin_path.exists():
+        pin = json.loads(pin_path.read_text())
+    else:
+        comparisons = sorted((PROJECT_ROOT / "10_model_comparison").glob("*/comparison_manifest.json"), reverse=True)
+        if not comparisons:
+            raise FileNotFoundError("Complete Notebook 10 before deployment stages 11–13.")
+        comparison_path = comparisons[0]
+        comparison = json.loads(comparison_path.read_text())
+        if comparison.get("status") != "completed" or comparison.get("test_evaluated") is not False:
+            raise ValueError("A completed exploratory comparison is required.")
+        for name, expected in comparison["output_sha256"].items():
+            if digest(comparison_path.parent / name) != expected:
+                raise ValueError("Saved comparison outputs changed.")
+        with (comparison_path.parent / "model_comparison.csv").open(newline="") as handle:
+            rows = list(csv.DictReader(handle))
+        winner = sorted(rows, key=lambda r: (-float(r["mean_fold_ap"]), float(r["std_fold_ap"]), r["model"]))[0]["model"]
+        if winner != comparison["candidate_under_fold_rule"]:
+            raise ValueError("Comparison selection differs from the declared fold rule.")
+        source = comparison["studies"][winner]
+        study_path = PROJECT_ROOT / source["folder"] / "study_manifest.json"
+        if digest(study_path) != source["manifest_sha256"]:
+            raise ValueError("Selected study changed after model comparison.")
+        record = verify_saved_study(study_path.parent)
+        selection = record["selection"]
+        identity = {"study_sha256": digest(study_path), "cutoff": selection["score_cutoff"]}
+        pin = {"schema_version": 1, "candidate": winner,
+               "deployment_id": hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()[:16],
+               "study_manifest": str(study_path.relative_to(PROJECT_ROOT)),
+               "study_manifest_sha256": digest(study_path),
+               "comparison_manifest": str(comparison_path.relative_to(PROJECT_ROOT)),
+               "comparison_manifest_sha256": digest(comparison_path),
+               "score_cutoff": selection["score_cutoff"], "status": "frozen exploratory deployment candidate"}
+        pin_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = pin_path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(pin, indent=2))
+        temporary.replace(pin_path)
+    study_path = PROJECT_ROOT / pin["study_manifest"]
+    if digest(study_path) != pin["study_manifest_sha256"] or digest(PROJECT_ROOT / pin["comparison_manifest"]) != pin["comparison_manifest_sha256"]:
+        raise ValueError("Pinned deployment provenance changed. Restore the matching snapshot; do not change hashes.")
+    frozen_comparison = json.loads((PROJECT_ROOT / pin["comparison_manifest"]).read_text())
+    comparison_folder = (PROJECT_ROOT / pin["comparison_manifest"]).parent
+    for name, expected in frozen_comparison["output_sha256"].items():
+        if digest(comparison_folder / name) != expected:
+            raise ValueError("Frozen comparison outputs changed. Restore their matching originals.")
+    if pin["candidate"] != frozen_comparison["candidate_under_fold_rule"]:
+        raise ValueError("Pinned candidate differs from its frozen comparison decision.")
+    declared = frozen_comparison["studies"][pin["candidate"]]
+    expected_path = (PROJECT_ROOT / declared["folder"] / "study_manifest.json").resolve()
+    identity = {"study_sha256": pin["study_manifest_sha256"], "cutoff": pin["score_cutoff"]}
+    expected_id = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()[:16]
+    if (expected_path != study_path.resolve() or declared["manifest_sha256"] != pin["study_manifest_sha256"]
+            or pin["deployment_id"] != expected_id):
+        raise ValueError("Pinned deployment identity or source study changed.")
+    record = verify_saved_study(study_path.parent)
+    if pin["score_cutoff"] != record["selection"]["score_cutoff"]:
+        raise ValueError("Pinned score cutoff changed.")
+    return pin, study_path.parent, record
+
+
+def dashboard_directory():
+    """Follow a completed deployment publication, or retain the legacy dashboard."""
+    base = PROJECT_ROOT / "08_dashboard"
+    pointer = base / "active_deployment.json"
+    if not pointer.exists():
+        return base
+    record = json.loads(pointer.read_text())
+    folder = (base / record["directory"]).resolve()
+    if not folder.is_relative_to((base / "deployments").resolve()):
+        raise ValueError("Invalid dashboard deployment directory.")
+    return folder
