@@ -104,6 +104,12 @@ The fixed target is an observed local median increase of **at least 10% in the n
 
 Sparse coverage, changing shop composition, provisional historical lookup assumptions, unresolved prices and absent external economic drivers limit conclusions. No universal model superiority, affordability improvement, reduction in inequality or stakeholder adoption has been demonstrated. Preserve source snapshots, package versions and saved findings when writing the report.
 
+## Optional model-specific tuning
+
+`research/15_logistic_regression_optuna.ipynb` is the first separate model study: Logistic Regression with a 12-trial Optuna search over regularisation strength. After Notebook 06 has prepared the three folds, Restart Kernel and Run All. Install the updated requirements in the selected kernel first. Outputs go to a separate `15_logistic_regression_optuna/<timestamp>/` folder inside the active data run. Existing models and dashboard inputs are not replaced.
+
+The study compares the original two Logistic Regression settings and simple baselines on identical 2025 folds, then reports a separate exploratory Jan–Mar 2026 validation comparison. It reads no test data. Reused periods and cutoff-selection results are not independent evidence of improvement. This study is optional; it is not a new step in the dashboard workflow.
+
 ## Troubleshooting
 
 - **Missing dashboard files:** run 08 after restoring/completing its matching checkpoints. For a published refresh, verify with 09. Do not restart 01 merely to reopen results.
