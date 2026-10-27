@@ -112,6 +112,8 @@ The study compares the original two balanced Logistic Regression settings, their
 
 `research/16_random_forest_optuna.ipynb` is Model 2: a standalone Random Forest study using the same folds, AP objective and 16-trial budget. It tunes depth, leaf support, feature sampling and class weighting, with 150 trees fixed. Run All using existing prepared inputs; completing Logistic Regression first is optional. Outputs go to `16_random_forest_optuna/<timestamp>/` within the active data run. Compare only matching input periods/rows; neither study reads test data or replaces the dashboard model.
 
+`research/17_xgboost_optuna.ipynb` is Model 3: XGBoost with the same chronological protocol and 16-trial budget. It tunes depth, minimum child weight, L2 regularisation and training-only positive weighting, with 150 rounds and learning rate 0.05 fixed. Reuse the prepared inputs and Run All; other model studies do not need rerunning. Separate outputs go to `17_xgboost_optuna/<timestamp>/` within the active data run. Existing results and dashboard checkpoints remain unchanged.
+
 ## Troubleshooting
 
 - **Missing dashboard files:** run 08 after restoring/completing its matching checkpoints. For a published refresh, verify with 09. Do not restart 01 merely to reopen results.
