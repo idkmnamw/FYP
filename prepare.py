@@ -14,12 +14,8 @@ MODELS = ["06_logistic_regression.ipynb", "07_random_forest.ipynb",
           "08_xgboost.ipynb", "09_lightgbm.ipynb", "09b_longer_history_lightgbm.ipynb", "10_model_comparison.ipynb"]
 
 
-def export_environment():
-    """Save installed FYP package versions after checking the deployed checkpoint."""
-    from importlib import metadata
-    import platform
-    import shlex
-    import re
+def saved_environment_records():
+    """Read verified study, detector and explanation version records without changing them."""
     import pricecatcher_config as cfg
     records = []
     pin = cfg.PROJECT_ROOT / "11_deployment" / "deployment_selection.json"
@@ -43,6 +39,17 @@ def export_environment():
             if hashlib.sha256(path.read_bytes()).hexdigest() != entry["cache_manifest_sha256"]:
                 raise ValueError("Explanation manifest changed.")
             records.append(json.loads(path.read_text()))
+    return records
+
+
+def export_environment():
+    """Save installed FYP package versions after checking the deployed checkpoint."""
+    from importlib import metadata
+    import platform
+    import shlex
+    import re
+    import pricecatcher_config as cfg
+    records = saved_environment_records()
     required = {}
     for record in records:
         for package, expected in record["package_versions"].items():
@@ -99,6 +106,125 @@ def export_environment():
     print("Keep the same Python version; install this file in a separate virtual environment to restore it.")
 
 
+def verify_checkpoint():
+    """Read-only compatibility check of the pinned classifier and published explanations."""
+    import ast
+    from importlib import metadata
+    import platform
+    import pricecatcher_config as cfg
+    pin_path = cfg.PROJECT_ROOT / "11_deployment" / "deployment_selection.json"
+    if not pin_path.is_file():
+        raise FileNotFoundError("Complete 11 and 12 first. This check never creates a deployment pin.")
+    records = saved_environment_records()
+    # Older manifests omitted Python; their saved training outputs record Python 3.12.
+    recorded_python = records[0].get("python_version", "3.12")
+    expected_python = tuple(int(part) for part in recorded_python.split(".")[:2])
+    if sys.version_info[:2] != expected_python:
+        raise ValueError(f"Checkpoint training used Python {recorded_python}; this interpreter is {platform.python_version()}. "
+                         "Use a separate matching environment; keep the existing environment and checkpoints.")
+    problems = []
+    for record in records:
+        for package, expected in record["package_versions"].items():
+            try:
+                installed = metadata.version(package)
+            except metadata.PackageNotFoundError:
+                installed = "not installed"
+            if installed != expected:
+                problems.append(f"{package}: needs {expected}; installed {installed}")
+    if problems:
+        raise ValueError("\n".join(sorted(set(problems))) + "\nUse --export-environment for grouped restore instructions.")
+    pin, study_dir, study = cfg.dashboard_candidate()  # Existing pin only; exact hashes checked.
+    directory = cfg.dashboard_directory()
+    entry_path = directory / "dashboard_manifest.json"  # Original published snapshot; no new source access.
+    entry = json.loads(entry_path.read_text())
+    model = entry["forecast_model"]
+    if model.get("deployment_id") != pin["deployment_id"] or model["score_cutoff"] != pin["score_cutoff"]:
+        raise ValueError("Published classifier/cutoff differs from the pinned selection. Verify 12 first.")
+    def checked_path(root, relative):
+        path = (root / relative).resolve()
+        if not path.is_relative_to(root.resolve()):
+            raise ValueError("Verification input points outside its saved folder.")
+        return path
+    def digest(path):
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    cache = checked_path(directory, entry["cache_dir"])
+    manifest_path = cache / "explanation_manifest.json"
+    if digest(manifest_path) != entry["cache_manifest_sha256"]:
+        raise ValueError("Explanation manifest changed.")
+    manifest = json.loads(manifest_path.read_text())
+    if manifest["forecast_model"] != model or manifest["protocol"]["features"] != study["selection"]["feature_columns"]:
+        raise ValueError("Published features/model differ from the frozen study.")
+    protected = {pin_path: digest(pin_path), entry_path: digest(entry_path), manifest_path: digest(manifest_path)}
+    for name, expected in manifest["output_sha256"].items():
+        path = checked_path(cache, name)
+        if digest(path) != expected:
+            raise ValueError(f"Published cache changed: {name}")
+        protected[path] = expected
+    model_path = checked_path(cfg.PROJECT_ROOT, model["model_path"])
+    if (model_path.parent != study_dir.resolve() or digest(model_path) != model["sha256"]
+            or study["output_sha256"][model_path.name] != model["sha256"]):
+        raise ValueError("Published classifier differs from its frozen study.")
+    protected[model_path] = model["sha256"]
+    protected[study_dir / "study_manifest.json"] = pin["study_manifest_sha256"]
+    import joblib
+    import numpy as np
+    import pandas as pd
+    from scipy.special import expit
+    settings_path = cfg.PROJECT_ROOT / "experiments" / "holdout" / "05_modelling" / "experiment_settings.json"
+    settings_hash = study["input_sha256"][str(settings_path.relative_to(cfg.PROJECT_ROOT))]
+    if digest(settings_path) != settings_hash:
+        raise ValueError("Frozen feature settings changed.")
+    protected[settings_path] = settings_hash
+    settings = json.loads(settings_path.read_text())
+    features = settings["feature_columns"]
+    columns = list(dict.fromkeys(features + ["forecast_id", "model_score", "predicted_surge"]))
+    latest = pd.read_parquet(cache / "latest_dashboard.parquet", columns=columns)
+    if latest.empty or not latest.forecast_id.is_unique:
+        raise ValueError("Verification requires nonempty, unique saved forecast rows.")
+    # Load calculation definitions only: never execute notebook training or publishing cells.
+    notebook = json.loads((REPOSITORY / "12_shap_and_dashboard_inputs.ipynb").read_text())
+    names = {"model_inputs", "dense_matrix", "source_features", "explain_rows"}
+    functions = [node for cell in notebook["cells"] if cell["cell_type"] == "code"
+                 for node in ast.parse("".join(cell["source"])).body
+                 if isinstance(node, ast.FunctionDef) and node.name in names]
+    if len(functions) != len(names) or {node.name for node in functions} != names:
+        raise ValueError("Expected explanation calculations are missing or duplicated.")
+    namespace = {"np": np, "pd": pd, "expit": expit}
+    exec(compile(ast.Module(body=functions, type_ignores=[]), "saved explanation calculations", "exec"), namespace)
+    pipeline = joblib.load(model_path)
+    sample = latest.head(50)
+    scores = pipeline.predict_proba(namespace["model_inputs"](sample, settings))[:, 1]
+    if not np.isfinite(scores).all() or not ((scores >= 0) & (scores <= 1)).all():
+        raise ValueError("Reloaded classifier produced invalid scores.")
+    np.testing.assert_allclose(scores, sample.model_score, rtol=1e-6, atol=1e-8)
+    np.testing.assert_array_equal(scores >= pin["score_cutoff"], sample.predicted_surge)
+    explanations = pd.read_parquet(cache / "shap_explanations.parquet")
+    if explanations.empty:
+        raise ValueError("The published explanation cache is empty.")
+    shap_columns = ["shap__" + name for name in features]
+    if not np.isfinite(explanations[shap_columns + ["base_value", "raw_output", "model_score"]].to_numpy(dtype=float)).all():
+        raise ValueError("Cached explanations contain non-finite values.")
+    np.testing.assert_allclose(explanations.base_value + explanations[shap_columns].sum(axis=1),
+                               explanations.raw_output, rtol=1e-5, atol=1e-5)
+    linked = explanations.raw_output if model["family"] == "Random Forest" else expit(explanations.raw_output)
+    np.testing.assert_allclose(linked, explanations.model_score, rtol=1e-5, atol=1e-6)
+    local = explanations.loc[explanations.cohort.eq("latest")].set_index("explanation_id")
+    if not local.index.is_unique or not set(local.index).issubset(set(latest.forecast_id)):
+        raise ValueError("Cached explanations do not match saved forecasts.")
+    np.testing.assert_allclose(latest.set_index("forecast_id").loc[local.index, "model_score"], local.model_score,
+                               rtol=1e-6, atol=1e-8)
+    # New five-row SHAP sanity check; its background is for verification only, never published.
+    namespace["explain_rows"](pipeline, model["family"], sample.head(5), sample, settings)
+    if any(digest(path) != expected for path, expected in protected.items()):
+        raise ValueError("A frozen verification input changed during the check.")
+    print("PASS Python:", platform.python_version(), "|", sys.executable)
+    print("PASS pinned classifier:", pin["candidate"], "| cutoff:", pin["score_cutoff"])
+    print("Snapshot checked:", entry.get("latest_complete_week", "original export"), "(original published snapshot)")
+    print(f"PASS {len(sample)} saved scores/alerts, cached SHAP consistency and {min(5, len(sample))} fresh explanations")
+    print("No fitting, downloads, test-label reads, source corrections or dashboard changes were performed.")
+    print("This checks technical compatibility, not future accuracy or source-price correctness.")
+
+
 def run_notebook(filename, run_root):
     import nbformat
     from nbclient import NotebookClient
@@ -126,7 +252,13 @@ def main():
     parser.add_argument("--refresh", action="store_true", help="Rebuild preparation only when no frozen model exists")
     parser.add_argument("--rerun-all", action="store_true", help="Run 01–10 in a separate run; excludes dashboard stages")
     parser.add_argument("--export-environment", action="store_true", help="Save exact installed FYP package versions; no notebook execution")
+    parser.add_argument("--verify-checkpoint", action="store_true", help="Read-only model/score/SHAP compatibility check; no fitting or publishing")
     args = parser.parse_args()
+    if args.verify_checkpoint:
+        if args.export_environment or args.refresh or args.rerun_all or args.experiment != "holdout":
+            parser.error("Use --verify-checkpoint by itself.")
+        verify_checkpoint()
+        return
     if args.export_environment:
         if args.refresh or args.rerun_all or args.experiment != "holdout":
             parser.error("Use --export-environment by itself.")

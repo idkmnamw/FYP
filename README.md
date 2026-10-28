@@ -65,6 +65,7 @@ Optional terminal commands:
 python prepare.py --experiment all       # Prepare all chronological folds
 python prepare.py --rerun-all           # Separate reproduction through 10; no deployment
 python prepare.py --export-environment  # Record installed versions; no notebook execution
+python prepare.py --verify-checkpoint   # Read-only Python/model/score/SHAP check
 ```
 
 The environment export writes `environment_requirements.txt` inside the active run. It checks saved deployment versions and groups mismatches/missing packages into one restore command. It never installs packages automatically. Keep the file with the run; it pins direct project dependencies and records Python, not every transitive dependency. Broad `requirements.txt` ranges are not the exact checkpoint environment.
@@ -94,6 +95,30 @@ New provenance uses `run::` / `repo::` paths. Legacy recorded data/run suffixes 
 `research/13` registers outcomes **2–29 November 2026**, with evaluation no earlier than **30 November**, subject to data availability. It describes its recorded checkpoints, not an automatically substituted new model. Registration does not prove timely forecasts were archived. Notebook 13 blocks downloading a registered outcome month intentionally; keep the last valid dashboard rather than bypassing the guard.
 
 False alerts, missed surges, vegetable-dominated positives and weak support for other groups remain substantial. The 12 shortlisted suspicious-price cases need independent evidence; statistical flags do not confirm errors and no invented corrections are applied. Sparse coverage and changing sampled shops also affect medians. Fuel, weather, imports and policy are outside the model inputs. SHAP describes model contributions, not economic causes. No stakeholder adoption, affordability improvement or inequality reduction has been established. Further tuning needs a justified separate experiment and a genuinely untouched evaluation period.
+
+## Finish the compatibility and source checks
+
+Keep the current environment. For the existing checkpoints, create a separate Python 3.12 environment and restore the version file already exported on your Mac:
+
+```bash
+python3.12 -m venv .venv312
+source .venv312/bin/activate
+python -m pip install -r data/runs/run_20261019_013241_618240/environment_requirements.txt
+python -m pip check
+python prepare.py --verify-checkpoint
+```
+
+Use your actual saved run path if it differs. If Python 3.12 is unavailable, install it first. Select **`.venv312/bin/python`** in VS Code and restart kernels. The verification checks the original published snapshot: frozen hashes, recorded Python/package versions, up to 50 saved scores/alerts, cached SHAP consistency and a new five-row explanation sanity check. It does not fit models, read test labels, download data, publish exports or prove future accuracy. A pass must come from running it with your real saved files; cloud synthetic tests are not that evidence. Future model studies record Python explicitly; older checkpoints use the Python 3.12 shown in their saved outputs.
+
+For source investigation, open **`research/14_review_readiness.ipynb` → Section 2** and run only its standalone source-review cell. It needs the existing training source context from the final review cell in 03, not the older workload checkpoint. It prints the `source_review_log.csv` path and preserves existing notes. Fill evidence reference, notes, reviewer and review date before recording a confirmed decision. Keep cases unresolved when independent evidence is unavailable. Matching the stored source or neighbouring prices cannot prove the correct value. Confirmed corrections belong in a separate documented experiment; no original prices are replaced by the review cell.
+
+Suggested report wording, based on the saved current results:
+
+> The longer-history tuned LightGBM was selected using mean expanding-fold average precision (0.4247). January–March 2026 validation AP was 0.3189, exceeding the history-matched food-group-rate baseline (0.1558). The decision cutoff was selected on this same validation period, so precision (28.4%), recall (51.7%) and F1 (0.3669) are apparent cutoff-selection results rather than independent test estimates. Of 7,116 alerts, 5,093 were false alerts; 1,889 of 3,912 observed surges were missed. Vegetables contributed approximately 99.6% of correctly detected validation surges, limiting generalisation across food groups. The reference longer-history model had higher validation AP (0.3300), so tuning did not improve every metric or period.
+
+> The dashboard supports historical price exploration and prioritised human review. Refreshed observations were scored retrospectively and do not establish later-period accuracy or timely warnings. Suspicious source prices remain uncertain without independent confirmation; no causal explanations, consumer savings, affordability benefits or stakeholder adoption have been demonstrated. The older model's April–June test results and the existing registered comparison cannot be reassigned to this selected model.
+
+For any new independent comparison, freeze the exact checkpoints, cutoffs and evaluation rules before inspecting outcomes and archive predictions before they occur. Do not amend the existing registration after exposure or bypass its download guard. No new prospective evaluation is started by these verification/review steps.
 
 ## Map and playback
 
