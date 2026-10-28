@@ -49,8 +49,8 @@ There are only **three Python files**. Keep `data/` and the saved evidence. `.ve
 | 07 | Random Forest |
 | 08 | XGBoost |
 | 09 | LightGBM |
-| 09b | Add 2024 history to the reference and tuned LightGBM settings |
-| 10 | Verify and compare all six candidates, including food-group-rate baselines |
+| 09b | Compare longer-history controls and run 24 direct-history Optuna trials |
+| 10 | Compare six inherited candidates plus the new history-tuned candidate, with group-rate baselines |
 | 11 | Pin 10's candidate/cutoff and fit or reuse a separate training-only anomaly detector |
 | 12 | Precompute SHAP and publish the pinned model's dashboard inputs |
 | 13 | Refresh observations using the same frozen model and cutoff |
@@ -74,11 +74,13 @@ The environment export writes `environment_requirements.txt` inside the active r
 
 The four classifiers use **16 sequential Optuna trials** and three expanding 2025 folds. Exact repeated configurations reuse that run's fold metrics; `reused_from_trial` identifies them and additional fit time is zero. Sixteen trials need not mean sixteen distinct settings. Imputation, encoding, scaling and class weights are learned inside training folds. Mean fold average precision (AP) selects settings; January–March 2026 validation selects the alert cutoff. AP is not accuracy, and cutoff-selection performance is not an independent test estimate.
 
-09b adds 2024 to training only, holding validation inputs/labels/rows and each fold's basket eligibility fixed. It fits two inherited LightGBM configurations without a new parameter search. This supports a history comparison; the other three classifiers have not received the same extra history.
+09b adds 2024 to training only, holding validation inputs/labels/rows and each fold's basket eligibility fixed. It now runs **24 sequential Optuna trials directly on the longer history**, including the two inherited settings as queued references. Learning rate (0.02–0.10), number of trees (100–400, step 50), leaves (15/31/63), minimum child samples (20/30/60/120), L2 regularisation (0–10) and class weighting (none/balanced) are searched. Mean expanding-fold AP selects parameters before January–March validation is loaded. Trials use fresh training-fitted preprocessing; exact repeats reuse fold metrics. At most 72 fold fits run, with no pruning or early stopping.
+
+The two inherited controls still isolate the history effect. The additional `optuna` candidate tests parameter changes on that same longer history, and 10 includes it only when present in the matching run. The other classifiers have not received the same extra history. Existing saved outputs describe the earlier two-control execution; new tuning results require a local run. To run only this experiment, use the verified `.venv312` kernel and **Restart Kernel and Run All in 09b, then 10**. Do not rerun preparation or 06–09. Temporary fold training files are cleaned up after saving. Existing dashboard pins are preserved; no accuracy gain or model promotion is assumed.
 
 10 adds training-only food-group surge-rate baselines for **both histories**. Historical labels reuse 09b's verified local cache/calculation and must match its saved training support. Read `group_baseline_metrics.csv` and `group_baseline_comparison.csv` in the new comparison folder. All six saved candidates beat their matched group-only baseline in the reviewed results. AP gains support information beyond food group, but item/location/coverage inputs also contribute; this is not a price-history-only ablation. This supplementary analysis was added after earlier outcomes were inspected.
 
-The selected longer-history tuned LightGBM has mean fold AP **0.4247** and January–March AP **0.3189**, F1 **0.3669**, precision **28.4%**, recall **51.7%**. Its matched validation group-only AP is **0.1558**. The longer-history reference has higher validation AP (**0.3300**); the tuned candidate follows the declared fold-selection rule, not universal superiority. Original April–June test AP **0.336** and F1 **0.414** belong to an older model and cannot be assigned to this candidate.
+The previously selected longer-history tuned LightGBM (before this new direct-history search) has mean fold AP **0.4247** and January–March AP **0.3189**, F1 **0.3669**, precision **28.4%**, recall **51.7%**. Its matched validation group-only AP is **0.1558**. The longer-history reference has higher validation AP (**0.3300**); the tuned candidate follows the declared fold-selection rule, not universal superiority. Original April–June test AP **0.336** and F1 **0.414** belong to an older model and cannot be assigned to this candidate.
 
 The surge target is an observed local median increase of at least **10% next exact week**, with coverage/history rules. Missing future outcomes remain unlabelled; features use past/current data only. Notebook 05's training-only 5%/10%/15% sensitivity analysis does not prove 10% is an official or optimal economic threshold. The classifier's score cutoff is a separate choice.
 
