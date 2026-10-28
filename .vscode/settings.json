@@ -1,0 +1,8 @@
+{
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/.ipynb_checkpoints": true,
+    "**/.venv*": true,
+    "**/.DS_Store": true
+  }
+}
