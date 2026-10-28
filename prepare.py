@@ -14,6 +14,57 @@ MODELS = ["06_logistic_regression.ipynb", "07_random_forest.ipynb",
           "08_xgboost.ipynb", "09_lightgbm.ipynb", "09b_longer_history_lightgbm.ipynb", "10_model_comparison.ipynb"]
 
 
+def export_environment():
+    """Save installed FYP package versions after checking the deployed checkpoint."""
+    from importlib import metadata
+    import platform
+    import pricecatcher_config as cfg
+    records = []
+    pin = cfg.PROJECT_ROOT / "11_deployment" / "deployment_selection.json"
+    if pin.is_file():
+        selection = json.loads(pin.read_text())
+        path = cfg.PROJECT_ROOT / selection["study_manifest"]
+        if hashlib.sha256(path.read_bytes()).hexdigest() != selection["study_manifest_sha256"]:
+            raise ValueError("Pinned study manifest changed. Restore it before exporting the environment.")
+        records.append(json.loads(path.read_text()))
+        link = cfg.PROJECT_ROOT / "11_deployment" / "anomaly_selection.json"
+        if link.is_file():
+            detector = json.loads(link.read_text())
+            path = cfg.PROJECT_ROOT / detector["manifest_path"]
+            if hashlib.sha256(path.read_bytes()).hexdigest() != detector["manifest_sha256"]:
+                raise ValueError("Anomaly manifest changed.")
+            records.append(json.loads(path.read_text()))
+        base = cfg.dashboard_directory() / "dashboard_manifest.json"
+        if base.is_file():
+            entry = json.loads(base.read_text())
+            path = base.parent / entry["cache_dir"] / "explanation_manifest.json"
+            if hashlib.sha256(path.read_bytes()).hexdigest() != entry["cache_manifest_sha256"]:
+                raise ValueError("Explanation manifest changed.")
+            records.append(json.loads(path.read_text()))
+    for record in records:
+        for package, expected in record["package_versions"].items():
+            installed = metadata.version(package)
+            if installed != expected:
+                raise ValueError(f"{package}: checkpoint needs {expected}; installed {installed}. Restore that version first.")
+    packages = ["pandas", "numpy", "scipy", "matplotlib", "pyarrow", "jupyterlab", "ipykernel", "nbformat", "nbclient",
+                "scikit-learn", "joblib", "optuna", "lightgbm", "shap", "streamlit"]
+    lines = [f"# Python {platform.python_version()}; FYP direct packages, not a complete transitive lock.",
+             "# Exported from the installed environment; saved deployment versions checked when present."]
+    lines += [f"{package}=={metadata.version(package)}" for package in packages]
+    try:
+        version = metadata.version("xgboost")
+    except metadata.PackageNotFoundError:
+        version = metadata.version("xgboost-cpu")
+    lines += [f'xgboost-cpu=={version}; platform_system == "Linux"',
+              f'xgboost=={version}; platform_system != "Linux"']
+    path = cfg.PROJECT_ROOT / "environment_requirements.txt"
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text("\n".join(lines) + "\n")
+    temporary.replace(path)
+    print("Saved exact direct-package versions:", path)
+    print("Keep the same Python version; install this file in a separate virtual environment to restore it.")
+
+
 def run_notebook(filename, run_root):
     import nbformat
     from nbclient import NotebookClient
@@ -40,7 +91,13 @@ def main():
     parser.add_argument("--experiment", choices=EXPERIMENTS + ["all"], default="holdout")
     parser.add_argument("--refresh", action="store_true", help="Rebuild preparation only when no frozen model exists")
     parser.add_argument("--rerun-all", action="store_true", help="Run 01–10 in a separate run; excludes dashboard stages")
+    parser.add_argument("--export-environment", action="store_true", help="Save exact installed FYP package versions; no notebook execution")
     args = parser.parse_args()
+    if args.export_environment:
+        if args.refresh or args.rerun_all or args.experiment != "holdout":
+            parser.error("Use --export-environment by itself.")
+        export_environment()
+        return
     missing = [name for name in ["nbformat", "nbclient", "ipykernel"] if util.find_spec(name) is None]
     if missing:
         raise SystemExit(f"Missing {', '.join(missing)} in {sys.executable}. Install requirements.txt in this interpreter.")

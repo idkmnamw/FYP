@@ -253,6 +253,43 @@ def latest_longer_history(model_dir):
     return max(candidates, key=lambda path: path.stat().st_mtime_ns).parent if candidates else None
 
 
+def input_reference(path):
+    """Record new inputs relative to the run or repository, not a user's home folder."""
+    path = Path(path).resolve()
+    for prefix, root in [("run::", PROJECT_ROOT), ("repo::", Path(__file__).parent)]:
+        if path.is_relative_to(root.resolve()):
+            return prefix + path.relative_to(root.resolve()).as_posix()
+    raise ValueError(f"Keep study inputs inside the run or repository: {path}")
+
+
+def resolve_input(reference):
+    """Locate moved inputs; callers still verify their original SHA-256 hashes."""
+    reference = str(reference)
+    for prefix, root in [("run::", PROJECT_ROOT), ("repo::", Path(__file__).parent)]:
+        if reference.startswith(prefix):
+            path = (root / reference.removeprefix(prefix)).resolve()
+            if not path.is_relative_to(root.resolve()):
+                raise ValueError("Input reference escapes its saved root.")
+            return path
+    path = Path(reference)
+    if not path.is_absolute():
+        return resolve_input("run::" + reference)
+    # Legacy manifests are immutable. Relocate only their explicit data/run suffixes.
+    parts = path.parts
+    for i, part in enumerate(parts[:-1]):
+        if part == "runs" and parts[i + 1].startswith("run_"):
+            return (PROJECT_ROOT / Path(*parts[i + 2:])).resolve()
+    if "data" in parts:
+        i = len(parts) - 1 - parts[::-1].index("data")
+        suffix = Path(*parts[i + 1:])
+        active = (suffix.parts and (suffix.parts[0] in {"experiments", "01_integrated", "11_deployment", "11_anomalies"}
+                  or suffix.parts[0].startswith(("06_", "07_", "08_", "09_", "10_", "12_longer_history_experiment", "13_registered_"))))
+        return ((PROJECT_ROOT if active else DATA_HOME) / suffix).resolve()
+    if path.is_file():
+        return path  # An unchanged external legacy input; no guessed replacement.
+    raise FileNotFoundError(f"Missing saved input: {reference}. Copy its matching source/cache too.")
+
+
 def verify_saved_study(folder):
     """Verify a locally trained study before inference; never fit or repair it."""
     folder = Path(folder).resolve()
@@ -271,7 +308,7 @@ def verify_saved_study(folder):
     for name, expected in record["input_sha256"].items():
         check(PROJECT_ROOT / name, expected)
     for name, expected in record.get("additional_input_sha256", {}).items():
-        check(Path(name), expected)
+        check(resolve_input(name), expected)
     selection = json.loads((folder / "selection.json").read_text())
     if selection != record["selection"]:
         raise ValueError("Study selection and manifest disagree.")

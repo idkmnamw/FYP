@@ -32,7 +32,7 @@ Select **Restart Kernel and Run All** in each. The models use the same prepared 
 
 Each model contains its technique, parameter search, chronological comparison, validation results, plots and report guidance. It saves timestamped outputs to the corresponding `06_logistic_regression/`, `07_random_forest/`, `08_xgboost/` or `09_lightgbm/` folder within the active data run. Do not run notebooks concurrently or edit `data/active_run.txt` during execution.
 
-The four classifier studies use 16 sequential Optuna trials, including reference configurations; repeated trials are possible. Select by mean AP on three expanding 2025 folds. Preprocessing and class weights are fitted using training labels only. Fit selected settings through December 2025, then choose the cutoff on January–March 2026 validation. Different score cutoffs do not imply equal workloads; cutoff-selection metrics are not independent test estimates.
+The four classifier studies use 16 sequential Optuna trials, including reference configurations. Repeated exact settings reuse their three fold metrics within the same run instead of refitting. The trial table records `reused_from_trial` and zero additional fitting time; the nominal budget is 16 trials, not necessarily 16 distinct configurations. The sampler, objective and earliest-trial tie rule are unchanged. Select by mean AP on three expanding 2025 folds. Preprocessing and class weights are fitted using training labels only. Fit selected settings through December 2025, then choose the cutoff on January–March 2026 validation. Different score cutoffs do not imply equal workloads; cutoff-selection metrics are not independent test estimates.
 
 **Active longer-history stage:** run `05b_historical_data_audit.ipynb` once if a compatible 2024 audit is not already saved. Its source-cache directories are retained, so existing verified 2024 sources can be reused. After 09, run 09b and then 10. The two history candidates inherit 09's original 31-leaf reference and its selected settings; there is no new parameter search. Each adds 2024 to every fold's training history while retaining that fold's original basket eligibility and unchanged validation features/labels/rows. Historical metadata/units remain provisional; exclusions and training support are audited. Outputs are separate under `09b_longer_history_lightgbm/<timestamp>/{reference,tuned}/`.
 
@@ -58,7 +58,7 @@ For normal use, open the app. To update observations, run **13 only**. To verify
 
 The app provides local filters, price stories/history, alerts, unusual patterns, cached explanations and downloads. The optional shortlist limits review workload, not model scores; omitted alerts may contain surges. Dates, units and coverage remain visible. Some rows have no cached explanation.
 
-13 refreshes closed calendar weeks without training or changing the cutoff. It shows observation/scoring dates and coverage audits. Saved October evidence supports **2,946 local rows for 12–18 October 2026**, versus **5,343** in the original June snapshot; this is coverage, not accuracy or population coverage. Refreshed scores are retrospective offline outputs. Registered outcome months remain protected. Failed checks preserve the published pointer.
+13 refreshes closed calendar weeks without training or changing the cutoff. It shows observation/scoring dates and coverage audits. The latest saved Notebook 13 execution supports **5,357 local rows for 19–25 October 2026**, versus **5,343** in the original June snapshot; this is coverage, not accuracy or population coverage. Refreshed scores are retrospective offline outputs. Registered outcome months remain protected. Failed checks preserve the published pointer.
 
 ## Preparation helper
 
@@ -69,6 +69,24 @@ python prepare.py --experiment all
 ```
 
 Manual notebook Run All is supported. Optional `python prepare.py --rerun-all` starts a separate reproduction of **01–10**, including all four searches, longer-history fits and comparison; it excludes 11–13 and deployment. Repeated execution of exposed periods is not fresh independent validation. The old `--model-mode` option is retired.
+
+## Supplementary baseline and reproducibility
+
+Run **10 only** to add the food-group-rate baseline to an already completed 06–09b workflow. No classifier is refitted, no new alert cutoff is chosen, and no test rows are loaded. It reads the verified prepared training labels and local 2024 cache; no downloads occur. The 2024-added labels reuse 09b's existing weekly calculation and must match its saved training row/positive counts. Both training histories are compared on the same evaluation rows. A later comparison never replaces the already pinned dashboard model.
+
+Read `group_baseline_metrics.csv` and `group_baseline_comparison.csv` in the new comparison folder. Positive AP differences support ranking beyond knowing the training food-group rates; negative differences must also be reported. The classifiers also use item, location and coverage information, so this comparison alone does not isolate the contribution of price history. This is supplementary analysis after earlier results were inspected, not an independent confirmation or a new selection rule. A higher fold score after tuning is not proof of better later-period performance. The current tuned model's many false alerts and weak group support remain limitations.
+
+Before changing or moving your environment, activate its working virtual environment and run:
+
+```bash
+python prepare.py --export-environment
+```
+
+This writes `environment_requirements.txt` inside the active data run without running notebooks or fitting models. It checks saved deployment package versions when present, then records exact installed FYP package versions and the Python version. Keep this generated file with your local run. Use the same Python version and install it in a separate virtual environment when restoring; it pins direct FYP packages, not every transitive dependency. `requirements.txt` remains the initial-install guide, not the exact checkpoint environment. Do not casually upgrade the environment used for saved checkpoints.
+
+New historical provenance uses `run::` and `repo::` references. Existing frozen manifests are not edited: their explicit legacy `data/runs/run_...` and shared `data/` suffixes can be resolved after copying. Copy the complete active run **and** shared `data/12_longer_history/` / `data/11_historical_audit/` caches when moving the repository. Original hashes still apply, and changed or missing files stop verification. Old optional research notebooks retain their original reproduction requirements.
+
+Further parameter expansion is optional research, not a required repair. Keep the completed experiment and exposed periods intact. If another training experiment is justified, predeclare a small learning-rate/tree-count comparison and its chronological stopping/selection rules, then assess it on a genuinely untouched later period. Existing November registrations describe their recorded checkpoints; they do not automatically cover a replacement model. No additional search or deployment switch is made by these maintenance changes.
 
 ## Supporting research and report evidence
 
@@ -113,7 +131,7 @@ The app's How it works → Model results and research details section shows the 
 
 To browse the preserved legacy dashboard intentionally, stop Streamlit and back up/remove only `08_dashboard/active_deployment.json`, then restart. Do not delete models, data or manifests inside preserved caches. A pending new pin still prevents refresh of a different model by accident; finish the intended deployment or make a documented rollback decision before refreshing.
 
-The updated integration notebooks 11–13 intentionally start without stale outputs from the previous checkpoint. Run them once locally to create current executed results. No rerun of 01–10 is needed when the verified comparison and source inputs are already complete. Generated deployment/cache folders are managed automatically; ordinary use needs no folder or hash edits.
+The saved outputs in 11–13 describe the last completed local deployment/refresh. They are not a claim that the cloud independently retrained those models. No rerun of 01–10 is needed when the verified comparison and source inputs are already complete. Generated deployment/cache folders are managed automatically; ordinary use needs no folder or hash edits.
 
 Treat generated CSV/JSON/model files as read-only evidence. Make a separate copy for report formatting instead of resaving the frozen originals.
 
