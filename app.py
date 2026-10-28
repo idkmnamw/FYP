@@ -46,7 +46,7 @@ GUIDANCE_REFERENCE = "Saved FYP longer-history validation study, January–March
 
 
 def group_guidance(group, version):
-    """Qualitative findings from saved study 12, not per-case confidence estimates."""
+    """Use the selected model’s group evidence, with guidance for the archived checkpoint."""
     if isinstance(version, dict):
         evidence = version.get("group_evidence", {}).get(group)
         if evidence is not None:
@@ -565,7 +565,7 @@ def district_key(state, district):
     """Match explicit state/district names, without guessing similar locations."""
     def normalise(value):
         value = re.sub(r"[^a-z0-9]+", " ", str(value).casefold()).strip()
-        return value.removeprefix("wilayah persekutuan ").removeprefix("w p ")
+        return value.removeprefix("wilayah persekutuan ").removeprefix("w p ").removeprefix("wp ")
     return normalise(state) + "|" + normalise(district)
 
 
@@ -884,7 +884,7 @@ def main():
     except (OSError, ValueError, KeyError, TypeError, AssertionError) as error:
         st.error("The saved dashboard inputs are missing or inconsistent. No forecasts were substituted.")
         st.write("Open Notebook 12 in your project kernel and Run All. It needs the saved forecasting checkpoint and completed Notebook 11 outputs. Do not delete data or restart Notebook 01 just to reopen the dashboard.")
-        st.caption("If you published a refresh in Notebook 13, rerun 13 to verify it. To intentionally reopen the original export, remove only 08_dashboard/refresh_manifest.json; keep its archived files and all model inputs.")
+        st.caption("If you published a refresh in Notebook 13, rerun 13 to verify that saved snapshot. Keep the deployment pointers, archived exports and model inputs; the error details below identify the affected file.")
         with st.expander("Details for troubleshooting"):
             st.code(str(error))
         st.stop()

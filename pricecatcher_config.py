@@ -235,24 +235,6 @@ def notebook_path(filename):
     raise FileNotFoundError(f"Notebook missing from the FYP project: {filename}")
 
 
-def latest_longer_history(model_dir):
-    """Find the latest completed compatible 12 run by completion time, never score."""
-    model_dir = Path(model_dir)
-    original = json.loads((model_dir / "model_manifest.json").read_text())
-    selection = json.loads((model_dir / "selection.json").read_text())
-    model_key = str((model_dir / "best_model.joblib").resolve())
-    candidates = []
-    for path in (PROJECT_ROOT / "12_longer_history_experiment").glob("*/experiment_manifest.json"):
-        record = json.loads(path.read_text())
-        protocol = record["protocol"]
-        if (protocol["candidate"] == selection["candidate"]
-                and protocol["cutoff"] == selection["score_cutoff"]
-                and protocol["input_sha256"].get(model_key) == original["model_sha256"]
-                and record.get("prepared_test_accessed") is False):
-            candidates.append(path)
-    return max(candidates, key=lambda path: path.stat().st_mtime_ns).parent if candidates else None
-
-
 def input_reference(path):
     """Record new inputs relative to the run or repository, not a user's home folder."""
     path = Path(path).resolve()

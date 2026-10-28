@@ -51,8 +51,13 @@ def export_environment():
                                  f"{required[package]} and {expected}. Keep the original manifests; "
                                  "these components need compatible saved checkpoints before one environment can be exported.")
             required[package] = expected
-    packages = ["pandas", "numpy", "scipy", "matplotlib", "pyarrow", "jupyterlab", "ipykernel", "nbformat", "nbclient",
-                "scikit-learn", "joblib", "optuna", "lightgbm", "shap", "streamlit"]
+    # Use project constraints for missing tools that have no saved checkpoint version.
+    constraints = {}
+    for line in (REPOSITORY / "requirements.txt").read_text().splitlines():
+        spec = line.split(";", 1)[0].strip()
+        if spec and not spec.startswith("#"):
+            constraints[re.split(r"[<>=!~\s\[]", spec, maxsplit=1)[0]] = spec
+    packages = [name for name in constraints if name not in {"xgboost", "xgboost-cpu"}]
     versions = {}
     for package in sorted(set(packages) | set(required) | {"xgboost"}):
         try:
@@ -63,12 +68,6 @@ def export_environment():
                     versions[package] = metadata.version("xgboost-cpu")
                 except metadata.PackageNotFoundError:
                     pass
-    # Use project constraints for missing tools that have no saved checkpoint version.
-    constraints = {}
-    for line in (REPOSITORY / "requirements.txt").read_text().splitlines():
-        spec = line.split(";", 1)[0].strip()
-        if spec and not spec.startswith("#"):
-            constraints[re.split(r"[<>=!~\s\[]", spec, maxsplit=1)[0]] = spec
     mismatches, restore = [], []
     for package, expected in sorted(required.items()):
         installed = versions.get(package, "not installed")
