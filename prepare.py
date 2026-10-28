@@ -19,6 +19,7 @@ def export_environment():
     from importlib import metadata
     import platform
     import shlex
+    import re
     import pricecatcher_config as cfg
     records = []
     pin = cfg.PROJECT_ROOT / "11_deployment" / "deployment_selection.json"
@@ -50,30 +51,45 @@ def export_environment():
                                  f"{required[package]} and {expected}. Keep the original manifests; "
                                  "these components need compatible saved checkpoints before one environment can be exported.")
             required[package] = expected
+    packages = ["pandas", "numpy", "scipy", "matplotlib", "pyarrow", "jupyterlab", "ipykernel", "nbformat", "nbclient",
+                "scikit-learn", "joblib", "optuna", "lightgbm", "shap", "streamlit"]
+    versions = {}
+    for package in sorted(set(packages) | set(required) | {"xgboost"}):
+        try:
+            versions[package] = metadata.version(package)
+        except metadata.PackageNotFoundError:
+            if package == "xgboost":
+                try:
+                    versions[package] = metadata.version("xgboost-cpu")
+                except metadata.PackageNotFoundError:
+                    pass
+    # Use project constraints for missing tools that have no saved checkpoint version.
+    constraints = {}
+    for line in (REPOSITORY / "requirements.txt").read_text().splitlines():
+        spec = line.split(";", 1)[0].strip()
+        if spec and not spec.startswith("#"):
+            constraints[re.split(r"[<>=!~\s\[]", spec, maxsplit=1)[0]] = spec
     mismatches, restore = [], []
     for package, expected in sorted(required.items()):
-        try:
-            installed = metadata.version(package)
-        except metadata.PackageNotFoundError:
-            installed = "not installed"
+        installed = versions.get(package, "not installed")
         if installed != expected:
             mismatches.append(f"  {package}: needs {expected}; installed {installed}")
             restore.append(f"{package}=={expected}")
+    for package in packages + ["xgboost"]:
+        if package not in versions and package not in required:
+            mismatches.append(f"  {package}: missing project dependency")
+            name = "xgboost-cpu" if package == "xgboost" and platform.system() == "Linux" else package
+            restore.append(constraints.get(name, name))
     if mismatches:
         command = shlex.join([sys.executable, "-m", "pip", "install", *restore])
-        raise ValueError("Saved checkpoint package versions differ:\n" + "\n".join(mismatches)
-                         + "\n\nRestore all listed versions together in this environment:\n" + command
-                         + "\n\nRestart open notebook kernels, then rerun --export-environment. "
-                         "No models or manifests have been changed.")
-    packages = ["pandas", "numpy", "scipy", "matplotlib", "pyarrow", "jupyterlab", "ipykernel", "nbformat", "nbclient",
-                "scikit-learn", "joblib", "optuna", "lightgbm", "shap", "streamlit"]
+        raise ValueError("Checkpoint versions or project packages need attention:\n" + "\n".join(mismatches)
+                         + "\n\nRestore all listed packages together in this environment:\n" + command
+                         + "\n\nUse the Python interpreter used for training. Restart open notebook kernels, "
+                         "then rerun --export-environment. No models or manifests have been changed.")
     lines = [f"# Python {platform.python_version()}; FYP direct packages, not a complete transitive lock.",
              "# Exported from the installed environment; saved deployment versions checked when present."]
-    lines += [f"{package}=={metadata.version(package)}" for package in packages]
-    try:
-        version = metadata.version("xgboost")
-    except metadata.PackageNotFoundError:
-        version = metadata.version("xgboost-cpu")
+    lines += [f"{package}=={versions[package]}" for package in packages]
+    version = versions["xgboost"]
     lines += [f'xgboost-cpu=={version}; platform_system == "Linux"',
               f'xgboost=={version}; platform_system != "Linux"']
     path = cfg.PROJECT_ROOT / "environment_requirements.txt"
