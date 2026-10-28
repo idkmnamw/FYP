@@ -18,6 +18,7 @@ def export_environment():
     """Save installed FYP package versions after checking the deployed checkpoint."""
     from importlib import metadata
     import platform
+    import shlex
     import pricecatcher_config as cfg
     records = []
     pin = cfg.PROJECT_ROOT / "11_deployment" / "deployment_selection.json"
@@ -41,11 +42,29 @@ def export_environment():
             if hashlib.sha256(path.read_bytes()).hexdigest() != entry["cache_manifest_sha256"]:
                 raise ValueError("Explanation manifest changed.")
             records.append(json.loads(path.read_text()))
+    required = {}
     for record in records:
         for package, expected in record["package_versions"].items():
+            if package in required and required[package] != expected:
+                raise ValueError(f"Saved components require conflicting {package} versions: "
+                                 f"{required[package]} and {expected}. Keep the original manifests; "
+                                 "these components need compatible saved checkpoints before one environment can be exported.")
+            required[package] = expected
+    mismatches, restore = [], []
+    for package, expected in sorted(required.items()):
+        try:
             installed = metadata.version(package)
-            if installed != expected:
-                raise ValueError(f"{package}: checkpoint needs {expected}; installed {installed}. Restore that version first.")
+        except metadata.PackageNotFoundError:
+            installed = "not installed"
+        if installed != expected:
+            mismatches.append(f"  {package}: needs {expected}; installed {installed}")
+            restore.append(f"{package}=={expected}")
+    if mismatches:
+        command = shlex.join([sys.executable, "-m", "pip", "install", *restore])
+        raise ValueError("Saved checkpoint package versions differ:\n" + "\n".join(mismatches)
+                         + "\n\nRestore all listed versions together in this environment:\n" + command
+                         + "\n\nRestart open notebook kernels, then rerun --export-environment. "
+                         "No models or manifests have been changed.")
     packages = ["pandas", "numpy", "scipy", "matplotlib", "pyarrow", "jupyterlab", "ipykernel", "nbformat", "nbclient",
                 "scikit-learn", "joblib", "optuna", "lightgbm", "shap", "streamlit"]
     lines = [f"# Python {platform.python_version()}; FYP direct packages, not a complete transitive lock.",
