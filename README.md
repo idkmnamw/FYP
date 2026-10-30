@@ -73,6 +73,19 @@ The new search selected trial 15: learning rate 0.06485, 400 trees, 31 leaves, m
 
 January–March selects each cutoff, so its classification metrics are **apparent cutoff-selection results**, not independent test estimates. The new candidate follows 10's fold rule; this does not change the existing dashboard pin. The other classifiers have not received the extra history. Old April–June test AP 0.336/F1 0.414 belong to a different, earlier model. Food-group baselines use training-only rates and matched histories; gains over them are not a price-history-only ablation.
 
+## Data periods and report scope
+
+| Purpose | Source/cutoff period |
+|---|---|
+| Original classifiers in 06–09 | Final training: January–December 2025 |
+| Longer-history classifiers in 09b | Final training: January 2024–December 2025 |
+| Expanding-fold evaluation | Later 2025 outcomes after each fold's training cutoff |
+| Validation and score-cutoff selection | January–March 2026 |
+| Previously exposed test data | April–June 2026; older model results do not transfer to current candidates |
+| Dashboard refresh | Later observations, including the saved 19–25 October 2026 snapshot; scoring without retraining |
+
+These are source/cutoff periods; complete-week, coverage and target-horizon rules determine usable rows. The IR's January 2025–June 2026-only wording needs amendment to disclose supplementary 2024 training and separate retrospective refreshes. This extends the data boundary while preserving the local next-week classification/prototype objectives. Do not describe January 2024–October 2026 as the training period of every model.
+
 ## Saved data and supporting research
 
 Keep the complete active run, its environment file, shared `data/12_longer_history/` cache and `data/11_historical_audit/` when copying the project. Paths recorded with `run::`/`repo::` are portable; legacy paths can be resolved without changing frozen hashes. Missing or changed inputs need their matching originals, not replacement hashes.
@@ -94,6 +107,14 @@ The existing checkpoint passed Python 3.12.2 verification on your Mac: 50 saved 
 - **Missing/changed inputs:** restore the matching snapshot; keep `data/` and original manifests. Do not retrain merely to open the dashboard.
 - **Missing dashboard export:** investigate the existing refresh with 13 or complete 11 → 12 for the pinned model. Preserve pointers and archived exports.
 - **Download failure:** uncached data needs network access; verified complete caches avoid downloads. Cloud access has returned proxy 403.
+
+## Review before writing the report
+
+The 30 October 2026 review executed 01–13 end to end on synthetic data, including all four classifier searches, direct-history tuning, anomaly detection, SHAP, refresh and the dashboard export loader. Notebook 10 now reconstructs overall/group metrics from saved validation predictions and checks fold summaries before ranking. Source review preserves editable evidence notes while rejecting changed source-case fields; a zero-case review is valid.
+
+After pulling these checks, run **10** once on your Mac to audit the real saved predictions. Run only Section 2 in `research/14` if reviewing the source log. Neither stage retrains models. The existing Mac checkpoint verification passed; cloud checks do not independently reproduce real-data scores. Full cloud real-data reproduction remains unavailable: local source/model caches are absent and official source access returned proxy 403.
+
+Before submission, align report dates/metric definitions, state the baseline criteria explicitly, keep validation-cutoff results separate from independent tests, and disclose unresolved prices/group coverage and unmeasured user impact. No additional tuning or dashboard model replacement follows from the review.
 
 ## Map and playback
 
