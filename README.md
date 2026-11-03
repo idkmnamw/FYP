@@ -126,6 +126,7 @@ False alerts, missed surges, vegetable-dominated positives, sparse coverage, cha
 
 The existing checkpoint passed Python 3.12.2 verification on your Mac: 50 saved scores/alerts, cached SHAP consistency and five fresh explanations. This verifies technical compatibility, not future accuracy or source correctness.
 
+- **Legacy studies in research 19–21:** older classifier manifests omit `python_version`. These notebooks use the documented Python 3.12 requirement for that format and still verify saved package versions and input hashes. Keep the original manifests unchanged.
 - **Existing environment problem:** use the exported `environment_requirements.txt` inside the saved run to restore exact versions in a separate Python 3.12 environment. `--export-environment` groups missing packages/version mismatches into one restore command. It does not install them automatically.
 - **Fresh installation only:** create a Python 3.12 virtual environment and install `requirements.txt`. JupyterLab is optional; VS Code uses the listed kernel/execution packages. On macOS, LightGBM may need `brew install libomp`. Broad dependency ranges are not a checkpoint environment lock.
 - **Missing/changed inputs:** restore the matching snapshot; keep `data/` and original manifests. Do not retrain merely to open the dashboard.
