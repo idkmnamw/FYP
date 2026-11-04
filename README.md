@@ -86,60 +86,64 @@ January–March selects each cutoff, so its classification metrics are **apparen
 
 These are source/cutoff periods; complete-week, coverage and target-horizon rules determine usable rows. The IR's January 2025–June 2026-only wording needs amendment to disclose supplementary 2024 training and separate retrospective refreshes. This extends the data boundary while preserving the local next-week classification/prototype objectives. Do not describe January 2024–October 2026 as the training period of every model.
 
-## Saved data and supporting research
+## Save and restore the project
 
-Keep the complete active run, its environment file, shared `data/12_longer_history/` cache and `data/11_historical_audit/` when copying the project. Paths recorded with `run::`/`repo::` are portable; legacy paths can be resolved without changing frozen hashes. Missing or changed inputs need their matching originals, not replacement hashes.
+Git excludes real data, fitted models and dashboard exports. A fresh clone cannot display your actual results without the matching local files. Preserve:
 
-`research/09` records source-quality sensitivity; `research/10` tests matched-shop features; `research/12` preserves the earlier history experiment. Their older checkpoints may require the corresponding earlier Git revision (for example `7cbd4ec`). They are supporting evidence, not extra mandatory training stages.
+- The complete active `data/runs/run_.../` folder and `data/active_run.txt`.
+- Shared `data/12_longer_history/` caches and `data/11_historical_audit/`.
+- The active run's `environment_requirements.txt`, alongside the Python version used for training.
 
-**Optional new feature experiment:** after a completed 09b direct-history search, open `research/15_relative_price_features.ipynb` with the same verified project kernel and **Restart Kernel and Run All**. It adds seven current/past relative-price features to the frozen longer-history LightGBM settings, compares three expanding folds and then January–March validation, and saves a separate study under the active run's `research/15_relative_price_features/`. It uses existing verified caches, makes no downloads and does not change Notebook 10 or the dashboard. Do not rerun preparation to start it. A 0.70 AP reference is aspirational; no gain or independent accuracy is promised. Share its `fold_summary.csv`, `validation_comparison.csv` and `validation_group_metrics.csv` for interpretation. Numerical feature checks and an isolated synthetic end-to-end execution passed; these do not establish improvement on your real data.
+Keep saved manifests, deployment pointers and archived exports together. `run::`/`repo::` input references are portable; legacy paths are resolved without replacing their hashes. Do not delete saved runs or change hashes to repair a mismatch.
 
-**Cross-district research:** `research/16_cross_district_signals.ipynb` tests six additional signals from other districts for the same item/unit/state/shop type, delayed by one completed week. It excludes the target district, needs at least two peers for price/change summaries, and builds peer observations without next-week outcome eligibility. Run it with the same verified kernel after 09b; Notebook 15 is not a prerequisite. Settings, target rows and labels stay fixed; there is no new parameter search or automatic dashboard replacement. Its own timestamped folder contains fold/validation/group comparisons and `peer_feature_support.csv`. Report AP changes and peer coverage together, including declines. Numerical exclusion/timing checks, synthetic fitting and fresh-kernel execution are technical checks, not evidence of real-data improvement.
+## Supporting research — optional
 
-**Larger tuning budget:** `research/17_larger_optuna_budget.ipynb` continues from the recorded 24-trial 09b results using the original 22 features and unchanged search ranges. Default `TARGET_TRIALS = 200` means **200 total**, including the inherited 24, with fold-selected comparisons at 24/100/200. Use the verified project kernel and Restart Kernel and Run All; do not rerun preparation. It checkpoints completed trials and can resume, or extend a 100-total run to 200 by changing only that setting. The seeded continuation conditions on recorded trials; the original unsaved sampler state cannot be reproduced exactly. January–March validation is read only after the requested search finishes; the largest-budget fold winner stays the research candidate regardless of later validation ranking. The study saves under the active run's `research/17_larger_optuna_budget/`, with immutable timestamped result folders. Share `budget_comparison.csv`, `fold_summary.csv`, `trial_summary.csv` and `validation_group_metrics.csv`. No automatic dashboard deployment or guaranteed AP gain follows from a larger search.
+These notebooks are outside the main run sequence. Unsuccessful experiments remain useful evidence; they do not automatically replace the dashboard model. Use the verified project kernel and run one notebook at a time.
 
-The latest saved 17 execution records mean fold AP **0.4370 → 0.4382 → 0.4389** and January–March AP **0.3178 → 0.3247 → 0.3327** at 24/100/200 total trials. This is a modest recorded improvement, not AP 0.70, an independent test, or an automatic deployment decision. These saved real-data outputs were inspected; cloud synthetic checks do not reproduce their accuracy.
-
-**Label and anomaly audit:** after completed 05/11, run `research/18_label_and_anomaly_audit.ipynb` with the verified kernel. It reconstructs the 2×2 agreement from 05's saved training-pair diagnostic and compares the deployed pooled detector with a training-only food-group median/IQR-normalised representation, keeping the same six anomaly features and Isolation Forest settings. No per-group flag quotas are imposed. Share `label_sensitivity.csv`, `anomaly_group_comparison.csv` and `anomaly_flag_overlap.csv`; inspect `training_review_candidates.csv` separately for qualitative source-evidence review. A redistribution of flags is not verified accuracy, and alternative labels are not confirmed corrections. The audit loads no row-level surge labels or test rows and changes no target or dashboard. It saves a separate timestamp under the active run's `research/18_label_and_anomaly_audit/`; do not rerun frozen preparation to use it.
-
-**Other classifiers with matching longer history:** the independent notebooks below use the same verified 2024–2025 training populations and evaluation rows as 09b/17. Run them **one at a time** with the verified project kernel; their full-data searches may be expensive. Only the original respective classifier and completed 09b preparation/cache are prerequisites—do not rerun 01–18. Each refits the original 16 parameter configurations on longer history, then extends the search. Old 2025 scores are not reused as longer-history scores. Checkpoints resume compatible progress and timestamped result folders preserve completed evidence.
-
-| Research notebook | Search policy |
+| Notebook in `research/` | Purpose and status |
 |---|---|
-| `19_longer_history_logistic_regression.ipynb` | Original C/class-weight range; 100/200 total proposals, including the 16 refitted configurations |
-| `20_longer_history_random_forest.ipynb` | Complete all **48 distinct** original depth/leaf/feature/weight configurations |
-| `21_longer_history_xgboost.ipynb` | Complete all **54 distinct** original depth/child-weight/L2/weighting configurations |
+| `09_source_quality_sensitivity.ipynb` | Historical training-source sensitivity; requires its original checkpoint |
+| `10_matched_shop_feature_experiment.ipynb` | Historical matched-shop feature comparison; requires its original checkpoint |
+| `12_longer_history_experiment.ipynb` | Earlier history experiment; preserves the evidence behind the longer-history workflow |
+| `13_register_future_evaluation.ipynb` | Preserve any existing future registration; this legacy tool is not a new training stage |
+| `14_review_readiness.ipynb` | **Section 2 only** for the current source-review log; other sections refer to an older checkpoint |
+| `15_relative_price_features.ipynb` | Seven relative-price features; no reliable overall improvement established |
+| `16_cross_district_signals.ipynb` | Six lagged peer-district signals; mixed fold/validation results |
+| `17_larger_optuna_budget.ipynb` | LightGBM search-budget comparison at 24/100/200 total trials |
+| `18_label_and_anomaly_audit.ipynb` | Training-label sensitivity and an alternative anomaly representation |
 
-For RF/XGBoost, 200 proposals cannot add unique settings after those grids are exhausted; recorded trials can exceed the distinct total if the inherited 16 contain duplicates. LR's finite trial budget does not prove a globally optimal C or trial count. Compare original 2025 selected settings against the same settings with history to isolate the history effect, then compare first-16 longer-history selection against the larger search. All selection uses fold AP before later validation is read. Share each notebook's `budget_comparison.csv`, `fold_summary.csv`, `trial_summary.csv` and `validation_group_metrics.csv`. These are new research studies, not automatic additions to Notebook 10 or dashboard deployment. Equal data does not make search spaces equally exhaustive or guarantee AP gains. The original four-model results remain the 2025 studies until the new local runs supply their own evidence.
+Research 09/10/12 use the old combined-model checkpoint, not today's Logistic Regression notebook. Their original saved artifacts and matching Git revision (for example `7cbd4ec`) may be required. Keep them as historical evidence rather than running them against current classifier outputs.
 
-Notebook 11's detector remains an active dashboard component. The alternative in 18 is currently **research evidence**, not a deployed replacement. It could be integrated later only after defining the desired anomaly meaning, checking cases with credible evidence and reviewing the serving/export changes; more balanced flag counts alone are insufficient.
+Research 15–17 require completed 09b results and matching caches; 18 requires completed 05/11. They save separate outputs under the active run's `research/` folder. Do not rerun preparation to start them. Parameters are selected using expanding-fold AP; January–March results remain exploratory because that period has already been inspected.
 
-**Label and anomaly audit:** after completed 05/11, run `research/18_label_and_anomaly_audit.ipynb` with the verified kernel. It reconstructs the 2×2 label agreement from 05's saved training-pair diagnostic and compares the deployed pooled Isolation Forest with one using training-only food-group median/IQR normalisation. Both use the same six anomaly features and detector settings; there are no per-group flag quotas. Compare group flag rates/overlap and review up to 40 prioritised training entries. Redistribution is not verified anomaly accuracy, and a changed label under another weighting policy is not a confirmed error. The audit reads no surge labels or test rows, changes no target/deployment, and saves separate outputs under the active run's `research/18_label_and_anomaly_audit/`. Share `label_sensitivity.csv`, `anomaly_group_comparison.csv` and `anomaly_flag_overlap.csv`. Do not rerun frozen preparation to use it.
+Research 17 defaults to **200 total proposals**, including the inherited 24. Completed trials are checkpointed, so compatible progress resumes; changing 100 to 200 extends the same study. The original sampler state was not saved, so continuation is seeded but cannot reproduce that earlier state exactly. Saved mean fold AP was **0.4370 → 0.4382 → 0.4389**, and January–March AP was **0.3178 → 0.3247 → 0.3327** at 24/100/200. This is a modest recorded gain, not an independent test or evidence that AP 0.70 is attainable.
 
-For current source review, run **only Section 2** in `research/14_review_readiness.ipynb`. It preserves the log and does not correct prices. Keep the 12 suspicious cases unresolved unless independent evidence supports a decision. Its other workload sections refer to an older checkpoint.
+Research 18 compares label weighting and pooled Isolation Forest representations. Different labels do not establish source errors; redistributed anomaly flags do not establish improved detection accuracy. Notebook 11's pooled detector remains the dashboard component. Review `training_review_candidates.csv` with independent source evidence before drawing case-level conclusions.
 
-`research/13` registers outcomes for **2–29 November 2026**, with evaluation no earlier than **30 November**, subject to availability. The registration covers its recorded checkpoints, not a substituted candidate, and does not itself prove timely forecasts were archived. Preserve its guard and original rules. Any new independent claim needs an untouched period and rules/checkpoints frozen before inspecting outcomes.
-
-False alerts, missed surges, vegetable-dominated positives, sparse coverage, changing shops and provisional historical metadata remain limitations. Fuel, weather and other external drivers are outside the inputs. SHAP explains model contributions, not economic causes. Usability, stakeholder adoption, savings, affordability and inequality effects have not been established.
+Research 19–21 were removed from this workflow. Existing local research outputs can be retained for report evidence without being rerun or included in dashboard deployment. Removing their notebooks does not remove their local result folders.
 
 ## Environment and troubleshooting
 
-The existing checkpoint passed Python 3.12.2 verification on your Mac: 50 saved scores/alerts, cached SHAP consistency and five fresh explanations. This verifies technical compatibility, not future accuracy or source correctness.
+- **Saved checkpoint:** use its exported `environment_requirements.txt` in a separate matching Python 3.12 environment. `--export-environment` reports grouped missing-package/version restore instructions; it does not install packages.
+- **Fresh installation:** install `requirements.txt` in Python 3.12. These broad dependency ranges are not a checkpoint lock. On macOS, LightGBM may require `brew install libomp`.
+- **Missing or changed inputs:** restore the matching snapshot and original manifests. Do not retrain merely to open the dashboard.
+- **Missing dashboard export:** check the existing refresh in 13 or complete 11 → 12 for the pinned model. Preserve deployment pointers and archived exports.
+- **Download failure:** uncached data needs working source access. Verified complete caches avoid repeat downloads; earlier cloud runs encountered proxy 403 responses.
 
-- **Legacy studies in research 19–21:** older classifier manifests omit `python_version`. These notebooks use the documented Python 3.12 requirement for that format and still verify saved package versions and input hashes. Keep the original manifests unchanged.
-- **Existing environment problem:** use the exported `environment_requirements.txt` inside the saved run to restore exact versions in a separate Python 3.12 environment. `--export-environment` groups missing packages/version mismatches into one restore command. It does not install them automatically.
-- **Fresh installation only:** create a Python 3.12 virtual environment and install `requirements.txt`. JupyterLab is optional; VS Code uses the listed kernel/execution packages. On macOS, LightGBM may need `brew install libomp`. Broad dependency ranges are not a checkpoint environment lock.
-- **Missing/changed inputs:** restore the matching snapshot; keep `data/` and original manifests. Do not retrain merely to open the dashboard.
-- **Missing dashboard export:** investigate the existing refresh with 13 or complete 11 → 12 for the pinned model. Preserve pointers and archived exports.
-- **Download failure:** uncached data needs network access; verified complete caches avoid downloads. Cloud access has returned proxy 403.
+`python prepare.py --verify-checkpoint` checks the pinned classifier, saved scores/alerts and SHAP consistency without fitting or publishing. The Mac checkpoint passed a 50-row score/alert check and five fresh explanations. These checks establish technical compatibility, not future accuracy or source correctness.
 
-## Review before writing the report
+## Before writing the report
 
-The 30 October 2026 review executed 01–13 end to end on synthetic data, including all four classifier searches, direct-history tuning, anomaly detection, SHAP, refresh and the dashboard export loader. Notebook 10 now reconstructs overall/group metrics from saved validation predictions and checks fold summaries before ranking. Source review preserves editable evidence notes while rejecting changed source-case fields; a zero-case review is valid.
+The main workflow has passed isolated synthetic execution checks. The saved 30 October Notebook 10 execution also completed the comparison audit for all seven candidates while preserving the dashboard pin. These checks do not independently reproduce real-data accuracy in the cloud.
 
-The saved **30 October 2026 Notebook 10 execution completed the new audit for all seven candidates**, saved a new comparison, and confirmed the existing dashboard pin remains unchanged. Its displayed metrics/counts agree with the previously supplied CSVs within display rounding. This completes the requested local comparison check; rerun 10 only after a new model study or an intentional re-audit. Run only Section 2 in `research/14` if reviewing the source log. The existing Mac checkpoint verification also passed. Cloud synthetic checks do not independently reproduce real-data scores: local source/model caches are absent and official source access returned proxy 403.
+Keep these distinctions clear:
 
-Before submission, align report dates/metric definitions, state the baseline criteria explicitly, keep validation-cutoff results separate from independent tests, and disclose unresolved prices/group coverage and unmeasured user impact. No additional tuning or dashboard model replacement follows from the review.
+- Compare the four original classifiers on their shared 2025 training data. Present added 2024 history as a separate experiment.
+- Name the model and cutoff associated with each result. Research 17's candidate and the pinned dashboard classifier are different checkpoints.
+- January–March cutoff-selection metrics are exploratory. Older April–June results do not transfer to newer models.
+- Preserve existing November registrations. They cover only the recorded checkpoints and rules. The proposed outcome period is **2–29 November 2026**, with evaluation no earlier than **30 November**, subject to availability. Registration had to precede 1 November; do not create a late registration and describe it as prospective. Timely forecast archiving must also be demonstrated separately.
+- False alerts, missed surges, vegetable-dominated positives, sparse coverage, changing shops and provisional historical metadata remain limitations. Keep the 12 suspicious source cases unresolved unless independent evidence supports a decision.
+- Fuel, weather and other external drivers are outside the inputs. SHAP shows model contributions, not economic causes. Stakeholder adoption, savings, affordability and inequality effects have not been demonstrated.
 
 ## Map and playback
 
