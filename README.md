@@ -111,6 +111,7 @@ These notebooks are outside the main run sequence. Unsuccessful experiments rema
 | `16_cross_district_signals.ipynb` | Six lagged peer-district signals; mixed fold/validation results |
 | `17_larger_optuna_budget.ipynb` | LightGBM search-budget comparison at 24/100/200 total trials |
 | `18_label_and_anomaly_audit.ipynb` | Training-label sensitivity and an alternative anomaly representation |
+| `19_wholesale_availability_audit.ipynb` | Source-only wholesale coverage audit; no training or downloads |
 
 Research 09/10/12 use the old combined-model checkpoint, not today's Logistic Regression notebook. Their original saved artifacts and matching Git revision (for example `7cbd4ec`) may be required. Keep them as historical evidence rather than running them against current classifier outputs.
 
@@ -120,7 +121,9 @@ Research 17 defaults to **200 total proposals**, including the inherited 24. Com
 
 Research 18 compares label weighting and pooled Isolation Forest representations. Different labels do not establish source errors; redistributed anomaly flags do not establish improved detection accuracy. Notebook 11's pooled detector remains the dashboard component. Review `training_review_candidates.csv` with independent source evidence before drawing case-level conclusions.
 
-Research 19–21 were removed from this workflow. Existing local research outputs can be retained for report evidence without being rerun or included in dashboard deployment. Removing their notebooks does not remove their local result folders.
+The optional longer-history LR/RF/XGBoost search notebooks were removed from this workflow. Existing local research outputs can be retained for report evidence without being rerun or included in dashboard deployment. Removing their notebooks does not remove their local result folders.
+
+For the wholesale audit, open `research/19_wholesale_availability_audit.ipynb` in the verified project kernel and **Restart Kernel and Run All**. It reads only 2024–2025 source rows from existing caches and saves five compact CSVs plus a manifest under the active run's `research/19_wholesale_availability_audit/`. Missing 2024 history is reported, not downloaded. Share `source_summary.csv` and `group_signal_coverage.csv` first. This measures potential lagged-signal coverage, not predictive accuracy; prepared labels, models and dashboard exports stay unchanged.
 
 ## Environment and troubleshooting
 
