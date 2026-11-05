@@ -31,9 +31,36 @@ Select the same `.venv312/bin/python` interpreter for notebook kernels in VS Cod
 | `assets/` | Dashboard logo, district boundaries and their required licence |
 | `data/` | Local source caches, experiments, models and exports; excluded from Git |
 
-There are **three Python files**. Keep notebooks in the root: the runner and shared calculations use those paths. The VS Code settings hide virtual environments, Python caches and notebook checkpoints; this only changes the Explorer view. It does not delete files or select the notebook kernel.
+There are **three Python files**. Keep notebooks in the root: the runner and shared calculations use those paths. The VS Code settings hide virtual environments, generated kernel folders and known legacy data outputs. This changes only the Explorer view: no files are deleted, moved or excluded from Python reads. It does not select the notebook kernel.
 
 **Keep `data/`, `.venv312`, `research/` and `assets/`.** `.venv` is the older environment on your Mac; remove it locally only after confirming no terminal, notebook or other project uses it. `__pycache__/` and `.ipynb_checkpoints/` are generated folders; checkpoints may contain unsaved work. Do not delete saved runs or manifests simply to tidy the Explorer.
+
+## Finding the active data
+
+`data/active_run.txt` identifies the active run. Shared historical caches live beside `runs/`; model and dashboard outputs live inside the selected run. Old names remain because saved manifests reference those exact paths. Folder numbering follows the workflow version that created each result, not necessarily today's notebook numbering.
+
+```text
+data/
+├── active_run.txt
+├── 11_historical_audit/            # shared 2024 availability audit
+├── 12_longer_history/2024_source/  # shared verified source cache
+└── runs/
+    └── run_.../                   # use the run named in active_run.txt
+        ├── 01_integrated/         # frozen source and lookups
+        ├── experiments/           # prepared folds and holdout
+        ├── 06_logistic_regression/, 07_random_forest/
+        ├── 08_xgboost/, 09_lightgbm/, 09b_longer_history_lightgbm/
+        ├── 10_model_comparison/
+        ├── 11_deployment/, 11_anomalies/
+        ├── 08_dashboard/, 09_refresh/
+        ├── 13_registered_future_evaluation/
+        ├── research/              # current optional experiment outputs
+        └── environment_requirements.txt
+```
+
+The Explorer hides older top-level preparation copies, old combined-model/anomaly/explanation folders and earlier standalone tuning/research outputs. They can still be required by a frozen registration or historical study: **hidden does not mean disposable**. Older runs remain visible; do not choose one solely because its folder looks newer or smaller. Saved notebook executions inside a run remain available for reviewing reproduced outputs.
+
+To inspect hidden folders, open `.vscode/settings.json` and change the relevant `files.exclude` entry to `false`. The names above describe the existing format; nothing needs renaming or retraining. Physical deletion or relocation needs a dependency audit of the full local manifests, which are not available in the cloud checkout.
 
 ## What to run
 
