@@ -67,7 +67,9 @@ New input references use `run::` and `repo::`; legacy paths are resolved while t
 
 Everything under `research/` is outside the main run sequence. It must not silently replace the dashboard model.
 
-See the [artifact map and report guide](docs/workflow-and-report.md) for notebook-to-folder mappings, historical checkpoint requirements, execution-counter explanations and the scope of the November registration. It includes suggested appendix wording. The current deployment and registered models must be verified from real saved manifests; their identities and metrics cannot be inferred from earlier notes.
+Artifact folders retain their original names for compatibility: main Notebook 12 writes to `08_dashboard`, Notebook 13 uses `09_refresh`, and archived exports may use `07_anomalies`. Do not rename these folders without checking saved references. Nonsequential execution counters can reflect standalone diagnostic cells; they do not establish a fresh end-to-end run. Do not rerun output-writing notebooks solely to tidy counters.
+
+The current deployment and registered models must be verified from real saved manifests; their identities and metrics cannot be inferred from earlier notes. Research 04 targets older checkpoints and contains registration code, not an evaluation runner. Keep any existing registration unchanged and outside current-model performance claims unless its exact scope and results are verified.
 
 | Notebooks | Status / prerequisites |
 |---|---|
@@ -97,7 +99,7 @@ Research notebooks are numbered independently from the main pipeline. Renaming d
 
 Old notebook names are resolved by `pricecatcher_config.py` for legacy callers and saved input references. Hash checks still apply: edited notebook source has a new hash, so exact historical reproduction may require the original Git revision. No saved hashes or model manifests were rewritten.
 
-Detailed previously recorded results, experiment instructions and report caveats are preserved in [research notes](docs/research-notes.md). They are historical records, not cloud-verified results.
+The research notebooks retain their saved results and methodological caveats. Saved outputs are historical records, not evidence of a fresh cloud execution.
 
 ## Evaluation and claims
 
@@ -109,13 +111,13 @@ Detailed previously recorded results, experiment instructions and report caveats
 
 ## Checks and troubleshooting
 
-Run the focused regression checks without notebooks, downloads or model fitting:
+Check installed dependency consistency without executing notebooks or fitting models:
 
 ```bash
-python -m unittest discover -s tests -v
+python -m pip check
 ```
 
-`--verify-checkpoint` requires the actual saved deployment and exports. Missing artifacts cannot establish model compatibility, accuracy or a working real-data dashboard. See the [cloud review](docs/cloud-review.md) for checks performed and remaining limitations.
+`--verify-checkpoint` requires the actual saved deployment and exports. Missing artifacts cannot establish model compatibility, accuracy or a working real-data dashboard. Dependency checks and syntax validation do not establish end-to-end correctness. This checkout does not currently include a standalone test suite.
 
 If dashboard inputs are missing, restore the matching snapshot first. With the required saved inputs present, 11 → 12 builds exports; 13 verifies/publishes a separate refresh. Do not restart 01 just to view results.
 
