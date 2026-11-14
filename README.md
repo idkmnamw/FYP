@@ -1,185 +1,124 @@
 # HargaLens — Malaysian food-price monitoring
 
-Weekly local prices, next-week surge review, unusual patterns and precomputed explanations. This is a research prototype: alerts require investigation, model scores are uncalibrated, and affordability benefits have not been demonstrated.
+HargaLens is an FYP research prototype using PriceCatcher to review local weekly prices, next-week surge scores, unusual patterns and saved explanations. The target is an **observed local median price rise of at least 10% in the next exact calendar week**. It is not a fixed-shop price index. Scores are uncalibrated; alerts need investigation.
 
-## Open the dashboard
+## Start here
 
-Use the verified Python 3.12 environment from the FYP folder:
+Use Python **3.12** from the FYP folder. For a fresh development installation:
 
 ```bash
+python3.12 -m venv .venv312
 source .venv312/bin/activate
+python -m pip install -r requirements.txt
+python -m pip check
 python -m streamlit run app.py
 ```
 
-Select the same `.venv312/bin/python` interpreter for notebook kernels in VS Code. Opening the dashboard does not require rerunning notebooks. Its three tabs show saved prices, district maps with weekly playback, and explanations of the system.
+Select `.venv312/bin/python` for notebook kernels in VS Code. Run notebooks from the project root. Do not run notebooks concurrently or edit `data/active_run.txt` during execution.
 
-## Project layout
+**A fresh clone has no real datasets, fitted models or dashboard exports.** Opening the dashboard does not require rerunning notebooks, but does require the matching saved artifacts below. Without them, the dashboard reports missing inputs. Do not retrain merely to reopen saved results.
 
-| Files | Purpose |
-|---|---|
-| 01–05 notebooks | Integrate, audit, clean, aggregate and create features/labels |
-| 05b | Audit 2024 source availability before adding history |
-| 06–09 | Separate Logistic Regression, Random Forest, XGBoost and LightGBM studies |
-| 09b | Longer-history LightGBM controls and a focused 24-trial Optuna search |
-| 10 | Compare candidates and history-matched food-group-rate baselines |
-| 11–12 | Pin a model, detect anomalies, precompute SHAP and publish dashboard inputs |
-| 13 | Refresh observations with the existing model and cutoff |
-| `app.py` | Read-only Streamlit dashboard |
-| `pricecatcher_config.py` | Shared settings, paths and provenance checks |
-| `prepare.py` | Prepare folds, reproduce studies and check the saved environment/model |
-| `research/` | Supporting experiments and historical evidence; outside the main run sequence |
-| `assets/` | Dashboard logo, district boundaries and their required licence |
-| `data/` | Local source caches, experiments, models and exports; excluded from Git |
+`requirements.txt` contains broad version ranges, not a checkpoint lock. To restore a saved model, use its `environment_requirements.txt` with the matching Python version in a separate environment. Linux uses `xgboost-cpu`; macOS uses `xgboost`, and LightGBM may need `brew install libomp`.
 
-There are **three Python files**. Keep notebooks in the root: the runner and shared calculations use those paths. The VS Code settings hide virtual environments, generated kernel folders and known legacy data outputs. This changes only the Explorer view: no files are deleted, moved or excluded from Python reads. It does not select the notebook kernel.
+## Main workflow and dependencies
 
-**Keep `data/`, `.venv312`, `research/` and `assets/`.** `.venv` is the older environment on your Mac; remove it locally only after confirming no terminal, notebook or other project uses it. `__pycache__/` and `.ipynb_checkpoints/` are generated folders; checkpoints may contain unsaved work. Do not delete saved runs or manifests simply to tidy the Explorer.
+| Stage | Reads | Produces / purpose |
+|---|---|---|
+| **01** Integrate | Monthly 2025–June 2026 PriceCatcher files and item/premise lookups, or verified source cache | A new run with frozen `01_integrated/` data, lookups and source hashes |
+| **02** Quality | 01 and experiment cutoff | Training-only item coverage and sparse-item screening |
+| **03** Cleaning | 01–02 | Daily prices, training-learned price flags and source-review evidence; flags are retained by default |
+| **04** Weekly aggregation | 03 | Complete-scope local weekly medians and coverage |
+| **05** Features and labels | 03–04 | Exact-week lags, chronological train/validation/test splits, latest inputs and settings under `experiments/` |
+| **05b** Historical audit | 2024 source metadata/bounded samples; existing lookups if available | Shared availability audit; prerequisite for 09b |
+| **06–09** Classifiers | 05 for holdout and three expanding 2025 folds | Separate Logistic Regression, Random Forest, XGBoost and LightGBM studies; 16 Optuna trials each |
+| **09b** Longer-history LightGBM | Completed 09, 05b audit, matching cleaned inputs and verified 2024 cache/source | 2024-added reference and inherited-tuned controls, plus a 24-trial direct-history search; original evaluation rows stay fixed |
+| **10** Comparison | Matching 06–09/09b studies and source caches | Verified metrics, history-matched food-group baselines and a candidate under the fold-AP rule |
+| **11** Anomalies | 10 or existing deployment pin, original 2025 training features | Separate frozen Isolation Forest and scores; creates the classifier deployment pin only if absent |
+| **12** Explanations/export | Pinned classifier, 11 detector, prepared history and latest inputs | SHAP cache and dashboard exports under the pinned deployment |
+| **13** Optional refresh | Existing dashboard, frozen models/cleaning/lookups and later observations | Derived offline snapshot without retraining; blocks registered outcome months |
 
-## Finding the active data
+For a new reproduction, run **01 → 05 → 05b → 06–09 → 09b → 10**, then **11 → 12** only if dashboard exports are needed. After 05, the classifier notebooks prepare missing expanding folds when it is safe to do so. Preparation is blocked when frozen studies would be overwritten. Repeated studies create timestamped outputs; existing deployment pins are preserved.
 
-`data/active_run.txt` identifies the active run. Shared historical caches live beside `runs/`; model and dashboard outputs live inside the selected run. Old names remain because saved manifests reference those exact paths. Folder numbering follows the workflow version that created each result, not necessarily today's notebook numbering.
-
-```text
-data/
-├── active_run.txt
-├── 11_historical_audit/            # shared 2024 availability audit
-├── 12_longer_history/2024_source/  # shared verified source cache
-└── runs/
-    └── run_.../                   # use the run named in active_run.txt
-        ├── 01_integrated/         # frozen source and lookups
-        ├── experiments/           # prepared folds and holdout
-        ├── 06_logistic_regression/, 07_random_forest/
-        ├── 08_xgboost/, 09_lightgbm/, 09b_longer_history_lightgbm/
-        ├── 10_model_comparison/
-        ├── 11_deployment/, 11_anomalies/
-        ├── 08_dashboard/, 09_refresh/
-        ├── 13_registered_future_evaluation/
-        ├── research/              # current optional experiment outputs
-        └── environment_requirements.txt
-```
-
-The Explorer hides older top-level preparation copies, old combined-model/anomaly/explanation folders and earlier standalone tuning/research outputs. They can still be required by a frozen registration or historical study: **hidden does not mean disposable**. Older runs remain visible; do not choose one solely because its folder looks newer or smaller. Saved notebook executions inside a run remain available for reviewing reproduced outputs.
-
-To inspect hidden folders, open `.vscode/settings.json` and change the relevant `files.exclude` entry to `false`. The names above describe the existing format; nothing needs renaming or retraining. Physical deletion or relocation needs a dependency audit of the full local manifests, which are not available in the cloud checkout.
-
-## What to run
-
-- **View the dashboard:** use the command above.
-- **Review saved results:** open the notebooks; no execution is needed.
-- **Repeat longer-history tuning:** Restart Kernel and Run All in **09b → 10** using `.venv312`. Keep existing preparation and 06–09 results.
-- **Reproduce the full project:** run **01 → 05 → 05b → 06–09 → 09b → 10**. Notebook 01 starts a separate run. The four classifier notebooks can run independently after 05; missing expanding folds are prepared by the runner.
-- **Build dashboard exports:** run **11 → 12**. An existing deployment pin is reused; later comparisons do not silently replace it.
-- **Refresh saved observations:** run **13**, using the existing model. Registered future-outcome months are blocked intentionally.
-
-Do not run notebooks concurrently or edit `data/active_run.txt` during execution. A repeated study writes a new timestamped folder; previously inspected periods remain exposed.
-
-Optional commands:
+Convenience commands (these can execute notebooks or write local outputs):
 
 ```bash
-python prepare.py --experiment all       # Prepare chronological folds
-python prepare.py --rerun-all           # Separate reproduction through 10; no deployment
-python prepare.py --export-environment  # Record exact installed direct-package versions
-python prepare.py --verify-checkpoint   # Read-only Python/model/score/SHAP check
+python prepare.py --experiment all       # Prepare all chronological splits
+python prepare.py --rerun-all           # New reproduction through 10; no deployment
+python prepare.py --export-environment  # Write installed direct-package versions
+python prepare.py --verify-checkpoint   # Read-only saved model/score/SHAP check
 ```
 
-## Evaluation and current evidence
+Uncached downloads require access to `storage.data.gov.my`. Preserve TLS, source hashes and ETag checks. If a source or manifest differs, restore the matching snapshot or use a separate new run; do not change hashes to make verification pass.
 
-The label is a local weekly median price rise of at least **10% in the next exact calendar week**, with coverage/history rules. Missing future outcomes stay unlabelled. Features use current/past data; preprocessing and learned screening use each fold's training data. The training-only threshold sensitivity analysis does not prove 10% is an official or optimal economic threshold.
+## Restore and preserve saved work
 
-06–09 each use 16 sequential Optuna trials and three expanding 2025 folds. In 09b, 2024 is added to training while original evaluation rows and fold eligibility stay fixed. Its 24 trials include both inherited controls and search learning rate, number of trees, leaves, minimum child support, L2 regularisation and class weighting. Exact repeated settings reuse their fold metrics. Mean fold average precision (AP) selects parameters before January–March validation is loaded. AP is not ordinary classification accuracy.
+The active run is named by `data/active_run.txt` as `runs/run_...`. Preserve these together:
 
-Saved local results reviewed on 29 October 2026:
+- The **complete** active `data/runs/run_.../` folder, including prepared inputs, models, study/comparison manifests, deployment pointers, dashboard/refresh archives, research outputs and registered evaluations.
+- `data/active_run.txt` and the active run's `environment_requirements.txt`.
+- Shared `data/11_historical_audit/` and `data/12_longer_history/` source caches.
+- Any older folders referenced by saved manifests or registrations, even if VS Code hides them.
 
-| Longer-history candidate | Mean fold AP | Jan–Mar AP | Precision | Recall | F1 |
-|---|---:|---:|---:|---:|---:|
-| Inherited reference | 0.4148 | 0.3300 | 31.0% | 43.2% | 0.3611 |
-| Inherited tuned setting | 0.4247 | 0.3189 | 28.4% | 51.7% | 0.3669 |
-| Direct-history Optuna | **0.4370** | 0.3178 | 28.1% | 52.4% | 0.3659 |
+New input references use `run::` and `repo::`; legacy paths are resolved while their original hashes remain unchanged. A current notebook can differ from code recorded in an older study. Retain the matching Git revision when reproducing that evidence.
 
-The new search selected trial 15: learning rate 0.06485, 400 trees, 31 leaves, minimum child samples 20, L2 penalty 8.4398 and no class weighting. Its selected fold AP rose, but later validation AP/F1 did not improve. At each model's own validation-selected cutoff it found 28 extra surges with 156 extra false alerts versus the inherited tuned setting. Further search is not automatically justified by this result.
+`pricecatcher_config.py` defines shared paths/settings and provenance checks; `prepare.py` runs preparation and compatibility checks; `app.py` reads dashboard exports. Keep main notebooks in the root. `assets/` contains the logo, district boundaries and required licence. `.vscode/settings.json` only hides known generated/legacy folders; hiding is not evidence that deletion is safe. Do not remove environments, checkpoints, runs or exports without checking their references and preserving local work.
 
-January–March selects each cutoff, so its classification metrics are **apparent cutoff-selection results**, not independent test estimates. The new candidate follows 10's fold rule; this does not change the existing dashboard pin. The other classifiers have not received the extra history. Old April–June test AP 0.336/F1 0.414 belong to a different, earlier model. Food-group baselines use training-only rates and matched histories; gains over them are not a price-history-only ablation.
+## Optional and legacy research
 
-## Data periods and report scope
+Everything under `research/` is outside the main run sequence. It must not silently replace the dashboard model.
 
-| Purpose | Source/cutoff period |
+See the [artifact map and report guide](docs/workflow-and-report.md) for notebook-to-folder mappings, historical checkpoint requirements, execution-counter explanations and the scope of the November registration. It includes suggested appendix wording. The current deployment and registered models must be verified from real saved manifests; their identities and metrics cannot be inferred from earlier notes.
+
+| Notebooks | Status / prerequisites |
 |---|---|
-| Original classifiers in 06–09 | Final training: January–December 2025 |
-| Longer-history classifiers in 09b | Final training: January 2024–December 2025 |
-| Expanding-fold evaluation | Later 2025 outcomes after each fold's training cutoff |
-| Validation and score-cutoff selection | January–March 2026 |
-| Previously exposed test data | April–June 2026; older model results do not transfer to current candidates |
-| Dashboard refresh | Later observations, including the saved 19–25 October 2026 snapshot; scoring without retraining |
+| 01–03 | Historical source-quality, matched-shop and history experiments; require their original combined-model checkpoint and possibly its Git revision |
+| 04 | Legacy future-evaluation registration tool; preserve existing registrations, never present a late registration as prospective |
+| 05 | Section 2 is the standalone source-review log; other sections use an older checkpoint |
+| 06–08 | Relative-price, peer-district and larger-search studies; require completed 09b outputs and matching caches |
+| 09 | Label/anomaly audit; requires completed 05/11 |
+| 10 | Wholesale availability audit; reads existing training caches, no downloads or fitting |
+| 11 | Fixed-parameter festival-calendar experiment; requires completed 09b Optuna outputs |
 
-These are source/cutoff periods; complete-week, coverage and target-horizon rules determine usable rows. The IR's January 2025–June 2026-only wording needs amendment to disclose supplementary 2024 training and separate retrospective refreshes. This extends the data boundary while preserving the local next-week classification/prototype objectives. Do not describe January 2024–October 2026 as the training period of every model.
+Research notebooks are numbered independently from the main pipeline. Renaming does not change their prerequisites or make them a sequence to run in order. Saved data/output folders keep their original names.
 
-## Save and restore the project
-
-Git excludes real data, fitted models and dashboard exports. A fresh clone cannot display your actual results without the matching local files. Preserve:
-
-- The complete active `data/runs/run_.../` folder and `data/active_run.txt`.
-- Shared `data/12_longer_history/` caches and `data/11_historical_audit/`.
-- The active run's `environment_requirements.txt`, alongside the Python version used for training.
-
-Keep saved manifests, deployment pointers and archived exports together. `run::`/`repo::` input references are portable; legacy paths are resolved without replacing their hashes. Do not delete saved runs or change hashes to repair a mismatch.
-
-## Supporting research — optional
-
-These notebooks are outside the main run sequence. Unsuccessful experiments remain useful evidence; they do not automatically replace the dashboard model. Use the verified project kernel and run one notebook at a time.
-
-| Notebook in `research/` | Purpose and status |
+| Old research number | Current file |
 |---|---|
-| `09_source_quality_sensitivity.ipynb` | Historical training-source sensitivity; requires its original checkpoint |
-| `10_matched_shop_feature_experiment.ipynb` | Historical matched-shop feature comparison; requires its original checkpoint |
-| `12_longer_history_experiment.ipynb` | Earlier history experiment; preserves the evidence behind the longer-history workflow |
-| `13_register_future_evaluation.ipynb` | Preserve any existing future registration; this legacy tool is not a new training stage |
-| `14_review_readiness.ipynb` | **Section 2 only** for the current source-review log; other sections refer to an older checkpoint |
-| `15_relative_price_features.ipynb` | Seven relative-price features; no reliable overall improvement established |
-| `16_cross_district_signals.ipynb` | Six lagged peer-district signals; mixed fold/validation results |
-| `17_larger_optuna_budget.ipynb` | LightGBM search-budget comparison at 24/100/200 total trials |
-| `18_label_and_anomaly_audit.ipynb` | Training-label sensitivity and an alternative anomaly representation |
-| `19_wholesale_availability_audit.ipynb` | Source-only wholesale coverage audit; no training or downloads |
-| `20_festival_calendar_experiment.ipynb` | Fixed-parameter LightGBM comparison with 12 festival-calendar flags |
+| 09 | [01_source_quality_sensitivity.ipynb](research/01_source_quality_sensitivity.ipynb) |
+| 10 | [02_matched_shop_feature_experiment.ipynb](research/02_matched_shop_feature_experiment.ipynb) |
+| 12 | [03_longer_history_experiment.ipynb](research/03_longer_history_experiment.ipynb) |
+| 13 | [04_register_future_evaluation.ipynb](research/04_register_future_evaluation.ipynb) |
+| 14 | [05_review_readiness.ipynb](research/05_review_readiness.ipynb) |
+| 15 | [06_relative_price_features.ipynb](research/06_relative_price_features.ipynb) |
+| 16 | [07_cross_district_signals.ipynb](research/07_cross_district_signals.ipynb) |
+| 17 | [08_larger_optuna_budget.ipynb](research/08_larger_optuna_budget.ipynb) |
+| 18 | [09_label_and_anomaly_audit.ipynb](research/09_label_and_anomaly_audit.ipynb) |
+| 19 | [10_wholesale_availability_audit.ipynb](research/10_wholesale_availability_audit.ipynb) |
+| 20 | [11_festival_calendar_experiment.ipynb](research/11_festival_calendar_experiment.ipynb) |
 
-Research 09/10/12 use the old combined-model checkpoint, not today's Logistic Regression notebook. Their original saved artifacts and matching Git revision (for example `7cbd4ec`) may be required. Keep them as historical evidence rather than running them against current classifier outputs.
+Old notebook names are resolved by `pricecatcher_config.py` for legacy callers and saved input references. Hash checks still apply: edited notebook source has a new hash, so exact historical reproduction may require the original Git revision. No saved hashes or model manifests were rewritten.
 
-Research 15–17 require completed 09b results and matching caches; 18 requires completed 05/11. They save separate outputs under the active run's `research/` folder. Do not rerun preparation to start them. Parameters are selected using expanding-fold AP; January–March results remain exploratory because that period has already been inspected.
+Detailed previously recorded results, experiment instructions and report caveats are preserved in [research notes](docs/research-notes.md). They are historical records, not cloud-verified results.
 
-Research 17 defaults to **200 total proposals**, including the inherited 24. Completed trials are checkpointed, so compatible progress resumes; changing 100 to 200 extends the same study. The original sampler state was not saved, so continuation is seeded but cannot reproduce that earlier state exactly. Saved mean fold AP was **0.4370 → 0.4382 → 0.4389**, and January–March AP was **0.3178 → 0.3247 → 0.3327** at 24/100/200. This is a modest recorded gain, not an independent test or evidence that AP 0.70 is attainable.
+## Evaluation and claims
 
-Research 18 compares label weighting and pooled Isolation Forest representations. Different labels do not establish source errors; redistributed anomaly flags do not establish improved detection accuracy. Notebook 11's pooled detector remains the dashboard component. Review `training_review_candidates.csv` with independent source evidence before drawing case-level conclusions.
+- The original four-classifier comparison trains on **2025**. Longer-history LightGBM additionally uses **2024** training history; evaluation rows remain matched.
+- Three expanding 2025 folds select parameters using average precision (AP). January–March 2026 selects score cutoffs, so its classification results are apparent cutoff-selection results. Previously inspected validation/test periods are **not untouched evaluations**. Older April–June results do not transfer to a newer candidate.
+- Read the current `11_deployment/deployment_selection.json` and verify its referenced study/comparison hashes before naming the deployed model. An earlier record of “Longer-history LightGBM (tuned)” does not establish the current selection. Later comparisons do not replace the existing pin.
+- Preserve November registrations and their exact rules. Registered outcome months are blocked by refresh. A retrospective refresh is not a timely archived forecast.
+- Sparse coverage, changing shops, provisional historical metadata and unresolved suspicious source cases limit interpretation. SHAP describes model contributions, not economic causes. Savings, affordability benefits and stakeholder adoption have not been demonstrated.
 
-The optional longer-history LR/RF/XGBoost search notebooks were removed from this workflow. Existing local research outputs can be retained for report evidence without being rerun or included in dashboard deployment. Removing their notebooks does not remove their local result folders.
+## Checks and troubleshooting
 
-For the wholesale audit, open `research/19_wholesale_availability_audit.ipynb` in the verified project kernel and **Restart Kernel and Run All**. It reads only 2024–2025 source rows from existing caches and saves five compact CSVs plus a manifest under the active run's `research/19_wholesale_availability_audit/`. Missing 2024 history is reported, not downloaded. Share `source_summary.csv` and `group_signal_coverage.csv` first. This measures potential lagged-signal coverage, not predictive accuracy; prepared labels, models and dashboard exports stay unchanged.
+Run the focused regression checks without notebooks, downloads or model fitting:
 
-For the festival experiment, open `research/20_festival_calendar_experiment.ipynb` with the verified project kernel and **Restart Kernel and Run All**, after a completed 09b Optuna study. No other research notebook is required. It adds 12 before/during/after forecast-week flags for four festival anchors, with original rows, labels and model settings fixed. The calendar is embedded; no new package, download, tuning or deployment is performed. Historical calendar publication vintages are not archived, so the scheduled-date features remain a retrospective assumption. Outputs go under the active run's `research/20_festival_calendar_experiment/`. Share `fold_comparison.csv`, `validation_comparison.csv` and `calendar_feature_support.csv` first. An AP gain is not guaranteed.
+```bash
+python -m unittest discover -s tests -v
+```
 
-## Environment and troubleshooting
+`--verify-checkpoint` requires the actual saved deployment and exports. Missing artifacts cannot establish model compatibility, accuracy or a working real-data dashboard. See the [cloud review](docs/cloud-review.md) for checks performed and remaining limitations.
 
-- **Saved checkpoint:** use its exported `environment_requirements.txt` in a separate matching Python 3.12 environment. `--export-environment` reports grouped missing-package/version restore instructions; it does not install packages.
-- **Fresh installation:** install `requirements.txt` in Python 3.12. These broad dependency ranges are not a checkpoint lock. On macOS, LightGBM may require `brew install libomp`.
-- **Missing or changed inputs:** restore the matching snapshot and original manifests. Do not retrain merely to open the dashboard.
-- **Missing dashboard export:** check the existing refresh in 13 or complete 11 → 12 for the pinned model. Preserve deployment pointers and archived exports.
-- **Download failure:** uncached data needs working source access. Verified complete caches avoid repeat downloads; earlier cloud runs encountered proxy 403 responses.
+If dashboard inputs are missing, restore the matching snapshot first. With the required saved inputs present, 11 → 12 builds exports; 13 verifies/publishes a separate refresh. Do not restart 01 just to view results.
 
-`python prepare.py --verify-checkpoint` checks the pinned classifier, saved scores/alerts and SHAP consistency without fitting or publishing. The Mac checkpoint passed a 50-row score/alert check and five fresh explanations. These checks establish technical compatibility, not future accuracy or source correctness.
+For the map, select an item/unit and shop type, then move or play the weekly timeline. Gaps remain gaps; grey means insufficient comparable data. District selection pauses playback; reset District to **All** for wider comparisons. Sampled medians do not guarantee the cheapest shop or population coverage.
 
-## Before writing the report
-
-The main workflow has passed isolated synthetic execution checks. The saved 30 October Notebook 10 execution also completed the comparison audit for all seven candidates while preserving the dashboard pin. These checks do not independently reproduce real-data accuracy in the cloud.
-
-Keep these distinctions clear:
-
-- Compare the four original classifiers on their shared 2025 training data. Present added 2024 history as a separate experiment.
-- Name the model and cutoff associated with each result. Research 17's candidate and the pinned dashboard classifier are different checkpoints.
-- January–March cutoff-selection metrics are exploratory. Older April–June results do not transfer to newer models.
-- Preserve existing November registrations. They cover only the recorded checkpoints and rules. The proposed outcome period is **2–29 November 2026**, with evaluation no earlier than **30 November**, subject to availability. Registration had to precede 1 November; do not create a late registration and describe it as prospective. Timely forecast archiving must also be demonstrated separately.
-- False alerts, missed surges, vegetable-dominated positives, sparse coverage, changing shops and provisional historical metadata remain limitations. Keep the 12 suspicious source cases unresolved unless independent evidence supports a decision.
-- Fuel, weather and other external drivers are outside the inputs. SHAP shows model contributions, not economic causes. Stakeholder adoption, savings, affordability and inequality effects have not been demonstrated.
-
-## Map and playback
-
-Choose an item/unit and shop type, then play or move the weekly timeline. District selection pauses playback; two district histories can be compared. Exact consecutive weeks are required for percentage changes; gaps stay gaps and grey means insufficient comparable data. Historic prices have no invented model alerts. Reset District to **All** for wider comparisons. Sampled medians do not guarantee the cheapest shop or population coverage.
-
-The bundled [DOSM district boundaries](assets/malaysia-districts.geojson) are the unmodified 160-feature [official file](https://github.com/dosm-malaysia/data-open/blob/21a78e98efd4cd9b022a27a1bf67d167076b7591/datasets/geodata/administrative_2_district.geojson), retrieved 28 October 2026, under the [Open Data License](assets/DOSM-OPEN-DATA-LICENSE.md). Matching handles case, punctuation and equivalent federal-territory prefixes. Unmatched districts stay in tables/selectors; no aliases or boundary changes are guessed and no official endorsement is implied.
+Bundled [DOSM district boundaries](assets/malaysia-districts.geojson) are the unmodified 160-feature [official file](https://github.com/dosm-malaysia/data-open/blob/21a78e98efd4cd9b022a27a1bf67d167076b7591/datasets/geodata/administrative_2_district.geojson), retrieved 28 October 2026, under the [Open Data License](assets/DOSM-OPEN-DATA-LICENSE.md). No official endorsement is implied.

@@ -382,6 +382,7 @@ def spotlight(history, latest, explanations, model, refresh=None):
     local = explanations.loc[explanations.cohort.eq("latest") & explanations.explanation_id.eq(row.forecast_id)]
     if local.empty:
         drivers = "No cached local explanation is available. No explanation was inferred or substituted."
+        st.caption("No cached explanation is available for this case.")
     else:
         case = local.iloc[0]
         contributions = pd.Series({name.removeprefix("shap__"): float(case[name])
@@ -389,8 +390,6 @@ def spotlight(history, latest, explanations, model, refresh=None):
         strongest = contributions.abs().nlargest(3).index
         drivers = "; ".join(f"{FEATURE_NAMES.get(name, name)} {'raises' if contributions[name] > 0 else 'lowers' if contributions[name] < 0 else 'does not change'} the model output"
                             for name in strongest) + "."
-    if local.empty:
-        st.caption("No cached explanation is available for this case.")
     with st.expander("Why this score?"):
         st.write("**What influenced the score:** " + drivers)
         st.caption("The score is not a verified chance of a surge. Contributions describe this model, not economic causes. The 10% target defines a surge; it is not a predicted price increase.")
@@ -583,13 +582,15 @@ def local_price_map(rows, states, measure="weekly_median_price"):
         if key.split("|")[0] not in state_keys:
             continue
         row = prices.get(key)
+        value = getattr(row, measure) if row is not None else None
+        has_value = row is not None and pd.notna(value)
         if row is not None:
             matched.add(key)
         features.append({"type": "Feature", "geometry": feature["geometry"],
                          "district_key": key, "location": location["state"] + " / " + location["district"],
                          "price": float(row.weekly_median_price) if row is not None else None,
-                         "value": float(getattr(row, measure)) if row is not None and pd.notna(getattr(row, measure)) else None,
-                         "has_value": row is not None and pd.notna(getattr(row, measure)),
+                         "value": float(value) if has_value else None,
+                         "has_value": has_value,
                          "coverage": (f"{row.record_count:.0f} records · {row.premise_count:.0f} shops · "
                                       f"{row.observed_days:.0f} days") if row is not None else "No eligible observation"})
     return features, sorted(set(prices) - matched)

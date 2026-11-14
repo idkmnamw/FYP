@@ -68,7 +68,7 @@ def export_environment():
     versions = {}
     for package in sorted(set(packages) | set(required) | {"xgboost"}):
         try:
-            versions[package] = metadata.version(package)
+            versions[package] = cfg.installed_package_version(package)
         except metadata.PackageNotFoundError:
             if package == "xgboost":
                 try:
@@ -80,14 +80,18 @@ def export_environment():
         installed = versions.get(package, "not installed")
         if installed != expected:
             mismatches.append(f"  {package}: needs {expected}; installed {installed}")
-            restore.append(f"{package}=={expected}")
+            # xgboost_module is provenance, not an installable distribution.
+            name = package
+            if name == "xgboost_module":
+                name = "xgboost-cpu" if platform.system() == "Linux" else "xgboost"
+            restore.append(f"{name}=={expected}")
     for package in packages + ["xgboost"]:
         if package not in versions and package not in required:
             mismatches.append(f"  {package}: missing project dependency")
             name = "xgboost-cpu" if package == "xgboost" and platform.system() == "Linux" else package
             restore.append(constraints.get(name, name))
     if mismatches:
-        command = shlex.join([sys.executable, "-m", "pip", "install", *restore])
+        command = shlex.join([sys.executable, "-m", "pip", "install", *dict.fromkeys(restore)])
         raise ValueError("Checkpoint versions or project packages need attention:\n" + "\n".join(mismatches)
                          + "\n\nRestore all listed packages together in this environment:\n" + command
                          + "\n\nUse the Python interpreter used for training. Restart open notebook kernels, "
@@ -126,7 +130,7 @@ def verify_checkpoint():
     for record in records:
         for package, expected in record["package_versions"].items():
             try:
-                installed = metadata.version(package)
+                installed = cfg.installed_package_version(package)
             except metadata.PackageNotFoundError:
                 installed = "not installed"
             if installed != expected:

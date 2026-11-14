@@ -8,6 +8,20 @@ import shutil
 from zoneinfo import ZoneInfo
 import numpy as np
 
+
+def installed_package_version(name):
+    """Read saved package records, including Notebook 08's module-version entry."""
+    from importlib import metadata
+    if name == "xgboost_module":
+        try:
+            import xgboost
+        except ModuleNotFoundError as error:
+            if error.name != "xgboost":
+                raise
+            raise metadata.PackageNotFoundError("xgboost") from error
+        return xgboost.__version__
+    return metadata.version(name)
+
 # Notebooks share one active run across separate kernels. Advanced/runner paths
 # still use PRICECATCHER_DATA_DIR explicitly and never depend on this pointer.
 DATA_HOME = Path(__file__).resolve().parent / "data"
@@ -226,12 +240,30 @@ PREPARATION_SETTINGS = {
 }
 
 
+# Research filenames were renumbered; saved output folders keep their original names.
+RESEARCH_NOTEBOOK_NAMES = {
+    "09_source_quality_sensitivity.ipynb": "01_source_quality_sensitivity.ipynb",
+    "10_matched_shop_feature_experiment.ipynb": "02_matched_shop_feature_experiment.ipynb",
+    "12_longer_history_experiment.ipynb": "03_longer_history_experiment.ipynb",
+    "13_register_future_evaluation.ipynb": "04_register_future_evaluation.ipynb",
+    "14_review_readiness.ipynb": "05_review_readiness.ipynb",
+    "15_relative_price_features.ipynb": "06_relative_price_features.ipynb",
+    "16_cross_district_signals.ipynb": "07_cross_district_signals.ipynb",
+    "17_larger_optuna_budget.ipynb": "08_larger_optuna_budget.ipynb",
+    "18_label_and_anomaly_audit.ipynb": "09_label_and_anomaly_audit.ipynb",
+    "19_wholesale_availability_audit.ipynb": "10_wholesale_availability_audit.ipynb",
+    "20_festival_calendar_experiment.ipynb": "11_festival_calendar_experiment.ipynb",
+}
+
+
 def notebook_path(filename):
     """Locate a main or research notebook without depending on the kernel folder."""
     repository = Path(__file__).resolve().parent
     for path in [repository / filename, repository / "research" / filename]:
         if path.is_file():
             return path
+    if filename in RESEARCH_NOTEBOOK_NAMES:
+        return notebook_path(RESEARCH_NOTEBOOK_NAMES[filename])
     raise FileNotFoundError(f"Notebook missing from the FYP project: {filename}")
 
 
@@ -252,6 +284,10 @@ def resolve_input(reference):
             path = (root / reference.removeprefix(prefix)).resolve()
             if not path.is_relative_to(root.resolve()):
                 raise ValueError("Input reference escapes its saved root.")
+            if prefix == "repo::" and not path.exists():
+                relative = path.relative_to(root.resolve())
+                if relative.parent in {Path("."), Path("research")} and relative.name in RESEARCH_NOTEBOOK_NAMES:
+                    return notebook_path(relative.name)
             return path
     path = Path(reference)
     if not path.is_absolute():
@@ -269,6 +305,8 @@ def resolve_input(reference):
         return ((PROJECT_ROOT if active else DATA_HOME) / suffix).resolve()
     if path.is_file():
         return path  # An unchanged external legacy input; no guessed replacement.
+    if path.parent.name == "research" and path.name in RESEARCH_NOTEBOOK_NAMES:
+        return notebook_path(path.name)
     raise FileNotFoundError(f"Missing saved input: {reference}. Copy its matching source/cache too.")
 
 
