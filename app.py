@@ -1,5 +1,6 @@
 """Read-only dashboard. Start with: python -m streamlit run app.py"""
 import hashlib
+import inspect
 import json
 import os
 import re
@@ -327,6 +328,59 @@ def group_overview(latest):
     st.caption("Amber = a next-week alert to investigate. Teal = below the alert cutoff, which still carries uncertainty. Counts reflect your filters and available observations, not each group's population risk.")
 
 
+def shap_summary(values, compact=False):
+    """Describe signed saved contributions without inferring price facts or causes."""
+    if compact:
+        values = values.loc[values.abs().nlargest(2).index]
+    raising = values.loc[values.gt(0)].nlargest(2).index
+    lowering = values.loc[values.lt(0)].nsmallest(2).index
+    reasons = []
+    for features, direction in [(raising, "raising this model score"), (lowering, "lowering it")]:
+        if len(features):
+            names = " and ".join(FEATURE_NAMES.get(name, name) for name in features)
+            reasons.append(names + " contributed most to " + direction)
+    return ("Relative to the model's baseline: " + "; ".join(reasons) + "." if reasons
+            else "No saved feature contribution moves this score away from the model's baseline.")
+
+
+def snapshot_alert_summary(latest):
+    """Rank counts within the filtered snapshot, with monitoring support and stable ties."""
+    if latest.empty or not latest.predicted_surge.any():
+        return None
+    counts = latest.groupby(["state", "project_group"], sort=True).agg(
+        alerts=("predicted_surge", "sum"), monitored=("forecast_id", "size")).reset_index()
+    counts = counts.sort_values(["alerts", "state", "project_group"], ascending=[False, True, True])
+    top = counts.iloc[0]
+    return {"state": top.state, "group": top.project_group, "alerts": int(top.alerts),
+            "monitored": int(top.monitored), "ties": int(counts.alerts.eq(top.alerts).sum())}
+
+
+def snapshot_headline(latest, week, can_navigate):
+    if latest.empty:
+        return
+    observed = date_span(week, pd.Timestamp(week) + pd.Timedelta(days=6))
+    summary = snapshot_alert_summary(latest)
+    if summary is None:
+        st.info(f"No review alerts in this snapshot · Observed {observed} · {len(latest):,} monitored local series in your filters.")
+        return
+    st.subheader("Most review alerts in this snapshot")
+    alert_label = "alert" if summary["alerts"] == 1 else "alerts"
+    st.write(f"**{summary['state']} · {summary['group']}** — **{summary['alerts']:,} {alert_label}** "
+             f"among {summary['monitored']:,} monitored local series.")
+    other_ties = summary["ties"] - 1
+    combination_label = "combination" if other_ties == 1 else "combinations"
+    tie = f" Tied with {other_ties} other state/food-group {combination_label}." if other_ties else ""
+    st.caption(f"Observed {observed}. Within your current filters.{tie} "
+               "Counts depend on monitoring coverage; this is not a population-risk ranking.")
+    if can_navigate:
+        def open_map():
+            st.session_state["dashboard_tab"] = "Price map & playback"
+        st.button("Explore recorded prices on the map", key="snapshot_open_map", on_click=open_map,
+                  help="Opens Price map & playback with your current filters. Map colours show observed prices, not alert counts.")
+    else:
+        st.caption("Open Price map & playback below to explore recorded prices with these filters.")
+
+
 def spotlight(history, latest, explanations, model, refresh=None, units="saved model-output units"):
     """Turn fixed saved results into a readable case story and portable brief."""
     if latest.empty:
@@ -357,6 +411,13 @@ def spotlight(history, latest, explanations, model, refresh=None, units="saved m
             st.markdown(f'<span class="signal {status_class}">{status_label}</span>', unsafe_allow_html=True)
             if row.is_anomaly:
                 st.markdown('<span class="signal signal-unusual">Unusual observed pattern</span>', unsafe_allow_html=True)
+            local = explanations.loc[explanations.cohort.eq("latest") & explanations.explanation_id.eq(row.forecast_id)]
+            if local.empty:
+                st.caption("No saved SHAP explanation for this case.")
+            else:
+                contributions = pd.Series({name.removeprefix("shap__"): float(local.iloc[0][name])
+                                           for name in local.columns if name.startswith("shap__")})
+                st.caption(shap_summary(contributions, compact=True))
             st.button("Read this price story", key=f"story_{row.forecast_id}", width="stretch",
                       type="primary" if row.forecast_id == st.session_state["spotlight_id"] else "secondary",
                       on_click=choose_story, args=(row.forecast_id,))
@@ -629,17 +690,7 @@ def explain_case(row, explanations, units):
         return
     case = case.iloc[0]
     values = pd.Series({name.removeprefix("shap__"): float(case[name]) for name in case.index if name.startswith("shap__")})
-    raising = values.loc[values.gt(0)].nlargest(2).index
-    lowering = values.loc[values.lt(0)].nsmallest(2).index
-    reasons = []
-    if len(raising):
-        reasons.append("**" + "** and **".join(FEATURE_NAMES.get(name, name) for name in raising)
-                       + "** contributed most to raising this model score")
-    if len(lowering):
-        reasons.append("**" + "** and **".join(FEATURE_NAMES.get(name, name) for name in lowering)
-                       + "** contributed most to lowering it")
-    st.write("Relative to the model's baseline: " + "; ".join(reasons) + "." if reasons
-             else "No saved feature contribution moves this score away from the model's baseline.")
+    st.write(shap_summary(values))
     st.caption("Orange raises the model output; blue lowers it. Longer bars mean larger contributions, not economic causes.")
     largest = values.abs().nlargest(8).index
     shown = values.loc[largest].rename(index=FEATURE_NAMES).copy()
@@ -1206,6 +1257,9 @@ def main():
              "Cases above the fixed review cutoff for a possible price rise of at least 10% next week. Some alerts will be wrong.",
              "A separate check found unusual observed prices. This is not a prediction of next week's price."]):
             col.metric(label, f"{value:,}", help=help_text)
+    # Older supported Streamlit releases keep the existing tabs and a textual map pointer.
+    can_navigate = {"key", "on_change"}.issubset(inspect.signature(st.tabs).parameters)
+    snapshot_headline(latest, week, can_navigate)
     st.caption("Start with your area in the sidebar. Open Understand a prediction for dates, signals and SHAP explanations; "
                "use Unusual patterns in the watchlist for anomaly details. Alerts are suggestions to investigate, not certain price rises.")
     if entry["forecast_model"]["version"] == "longer_2024_2025" or entry["forecast_model"].get("group_evidence"):
@@ -1222,7 +1276,8 @@ def main():
     if latest.empty:
         st.warning("No supported latest forecasts match these filters. Older history may still be available. This does not mean no surge risk.")
     review, local_map, predictions, evidence = st.tabs([
-        "Latest saved prices", "Price map & playback", "Understand a prediction", "How it works"])
+        "Latest saved prices", "Price map & playback", "Understand a prediction", "How it works"],
+        **({"key": "dashboard_tab", "on_change": "rerun"} if can_navigate else {}))
     with review:
         spotlight(history, latest, explanations, entry["forecast_model"], refresh, manifest["protocol"]["units"])
         unusual_cases = review_list(latest, refresh, entry["forecast_model"])
