@@ -324,61 +324,15 @@ def group_overview(latest):
     st.caption("Amber = a next-week alert to investigate. Teal = below the alert cutoff, which still carries uncertainty. Counts reflect your filters and available observations, not each group's population risk.")
 
 
-def spotlight(history, latest, explanations, model, refresh=None, units="saved model-output units"):
-    """Turn fixed saved results into a readable case story and portable brief."""
-    if latest.empty:
-        return
-    st.subheader("Prices worth a closer look")
-    st.caption("Start with a price story. These are the three highest-scoring cases in your filters; a high score is a reason to investigate, not a confirmed surge.")
-    candidates = latest.sort_values(["model_score", "forecast_id"], ascending=[False, True]).head(3)
-    if st.session_state.get("spotlight_id") not in candidates.forecast_id.tolist():
-        st.session_state["spotlight_id"] = candidates.iloc[0].forecast_id
-
-    def choose_story(forecast_id):
-        st.session_state["spotlight_id"] = forecast_id
-
-    cards = st.columns(len(candidates))
-    for card, (_, row) in zip(cards, candidates.iterrows()):
-        with card.container(border=True):
-            st.markdown(f"**{row['item']}**")
-            st.caption(f"{row.state} / {row.district} · {row.premise_type}")
-            change = row.get("weekly_price_change_pct", np.nan)
-            delta = f"{change:+.1f}% from the preceding week (observed)" if pd.notna(change) and np.isfinite(change) else None
-            st.metric("Observed weekly price", f"RM {row.weekly_median_price:.2f}", delta=delta, delta_color="inverse",
-                      help="The median of the observed prices. The change compares observed weeks; neither value predicts next week's price.")
-            st.caption(f"Per {row.unit}")
-            observed = pd.Timestamp(row.week_start)
-            st.caption(f"Observed: {date_span(observed, observed + pd.Timedelta(days=6))}")
-            status_class = "signal-review" if row.predicted_surge else "signal-monitor"
-            status_label = "Alert to review" if row.predicted_surge else "No alert raised"
-            st.markdown(f'<span class="signal {status_class}">{status_label}</span>', unsafe_allow_html=True)
-            if row.is_anomaly:
-                st.markdown('<span class="signal signal-unusual">Unusual observed pattern</span>', unsafe_allow_html=True)
-            st.button("Read this price story", key=f"story_{row.forecast_id}", width="stretch",
-                      type="primary" if row.forecast_id == st.session_state["spotlight_id"] else "secondary",
-                      on_click=choose_story, args=(row.forecast_id,))
-
-    row = candidates.loc[candidates.forecast_id.eq(st.session_state["spotlight_id"])].iloc[0]
+def download_price_brief(row, prices, explanations, model, refresh=None):
+    """Export the selected case without repeating its on-screen explanation."""
     week = pd.Timestamp(row.week_start)
     forecast_period = date_span(week + pd.Timedelta(days=7), row.next_week_end)
     status = "Review next week" if row.predicted_surge else "No alert raised"
     pattern = "Flagged as unusual" if row.is_anomaly else "Not flagged as unusual"
     headline = f"{row['item']} · {row.state} / {row.district}"
     coverage = f"{int(row.record_count)} price records from {int(row.premise_count)} shops across {int(row.observed_days)} observed days"
-    st.markdown(f"#### Price story: {headline}")
-    prediction_summary(row, model)
     guidance = group_guidance(row.project_group, model)
-    mask = history[SERIES].eq(row[SERIES]).fillna(False).all(axis=1)
-    calendar = pd.date_range(week - pd.Timedelta(weeks=11), week, freq="W-MON")
-    prices = history.loc[mask].set_index("week_start").weekly_median_price.reindex(calendar)
-    chart, context = st.columns([2, 1], gap="large")
-    with chart:
-        price_history_chart(prices, row.unit, height=2.6, xlabel="Recent weekly medians; gaps remain blank")
-    with context:
-        st.markdown("**Before you act**")
-        st.write(coverage + ".")
-        st.caption("Shop composition and sparse observations can affect local medians.")
-        st.caption("Saved validation study guidance: " + guidance)
     local = explanations.loc[explanations.cohort.eq("latest") & explanations.explanation_id.eq(row.forecast_id)]
     if local.empty:
         drivers = "No cached local explanation is available. No explanation was inferred or substituted."
@@ -389,8 +343,6 @@ def spotlight(history, latest, explanations, model, refresh=None, units="saved m
         strongest = contributions.abs().nlargest(3).index
         drivers = "; ".join(f"{FEATURE_NAMES.get(name, name)} {'raises' if contributions[name] > 0 else 'lowers' if contributions[name] < 0 else 'does not change'} the model output"
                             for name in strongest) + "."
-    with st.expander("Why this next-week score? (SHAP)", expanded=True):
-        explain_case(row, explanations, units)
     # Self-contained HTML can be shared or printed without a running dashboard.
     facts = {"Forecast case ID": row.forecast_id, "Observed week": date_span(week, week + pd.Timedelta(days=6)), "Forecast week": forecast_period,
              "Observed weekly median": f"RM {row.weekly_median_price:.2f} per {row.unit}",
@@ -422,7 +374,7 @@ def spotlight(history, latest, explanations, model, refresh=None, units="saved m
     <small>Source: Malaysian PriceCatcher. Generated from the saved HargaLens dashboard export. Use your browser's Print option to save a PDF.</small></html>"""
     st.download_button(f"Download brief · {row['item']} · {row.district}", brief.encode("utf-8"), mime="text/html",
                        key=f"brief_{row.forecast_id}", file_name=f"hargalens_story_{row.forecast_id}.html")
-    st.caption("Share the brief or open it in a browser and print it as a PDF. Dates, model identity, support and limitations travel with the case.")
+
 
 
 def review_list(latest, refresh=None, model=None):
@@ -448,7 +400,7 @@ def review_list(latest, refresh=None, model=None):
                 "Other food groups may be absent from the shortlist.")
     if shown.empty:
         st.info("No matching rows in this view. Below-cutoff scores do not rule out future surges.")
-        return
+        return shown
     table = shown[["project_group", "item", "state", "district", "premise_type", "weekly_median_price", "unit",
                    "model_score", "anomaly_score", "predicted_surge", "is_anomaly", "has_cached_explanation"]].copy()
     table["predicted_surge"] = table.predicted_surge.map({1: "Review next week", 0: "No alert raised"})
@@ -486,7 +438,8 @@ def review_list(latest, refresh=None, model=None):
         download["Snapshot type"] = refresh["snapshot_type"]
     st.download_button("Download these rows (CSV)", download.to_csv(index=False).encode("utf-8-sig"),
                        file_name="hargalens_price_review.csv", mime="text/csv")
-    return shown if view == "Unusual patterns" else None
+    return shown
+
 
 
 def saved_anomaly_cutoff(run, entry, manifest):
@@ -539,16 +492,8 @@ def anomaly_measurements(row):
     })
 
 
-def anomaly_details(cases, history, run, entry, manifest):
-    st.subheader("Anomaly details")
-    labels = {row.forecast_id: f"{row['item']} · {row.state} / {row.district} · {row.premise_type} · {row.unit}"
-              for _, row in cases.iterrows()}
-    case_id = st.selectbox("Choose an unusual pattern to inspect", list(labels),
-                           format_func=lambda value: labels[value], key="anomaly_case")
-    row = cases.loc[cases.forecast_id.eq(case_id)].iloc[0]
-    week = pd.Timestamp(row.week_start)
-    st.caption(f"Observed week: {date_span(week, week + pd.Timedelta(days=6))}. "
-               "This flag concerns observed price behaviour, separately from the next-week surge alert.")
+def anomaly_details(row, run, entry, manifest):
+    st.write("Flagged for review" if row.is_anomaly else "This observed pattern was not flagged.")
     try:
         cutoff = saved_anomaly_cutoff(run, entry, manifest)
         if cutoff is not None and bool(row.is_anomaly) != (float(row.anomaly_score) > cutoff):
@@ -556,27 +501,16 @@ def anomaly_details(cases, history, run, entry, manifest):
     except (OSError, ValueError, KeyError, TypeError) as error:
         cutoff = None
         st.warning(f"The detector cutoff could not be verified: {error}")
-    cols = st.columns(3)
+    cols = st.columns(2)
     cols[0].metric("Anomaly score", f"{row.anomaly_score:.4f}")
     cols[1].metric("Frozen anomaly cutoff", "Unavailable" if cutoff is None else f"{cutoff:.4f}")
-    cols[2].metric("Observed weekly median", f"RM {row.weekly_median_price:.2f} / {row.unit}")
     if cutoff is not None:
-        st.write(f"The saved score **{row.anomaly_score:.6f}** is above the detector cutoff **{cutoff:.6f}**, "
-                 "so this observed pattern was flagged for investigation.")
+        comparison = "above" if row.anomaly_score > cutoff else "at or below"
+        st.caption(f"Saved score {row.anomaly_score:.6f} is {comparison} the cutoff {cutoff:.6f}.")
     st.caption("Larger anomaly scores indicate more unusual patterns; they are not probabilities. "
                "A score strictly above the saved detector cutoff is flagged. This cutoff is separate from the 10% next-week surge definition.")
     if cutoff is None:
         st.caption("No verified cutoff is available for this saved export; no replacement cutoff was inferred.")
-    st.write(f"Observation support: {int(row.record_count)} price records, "
-             f"{int(row.premise_count)} shops and {int(row.observed_days)} observed days.")
-    past = history.loc[history[SERIES].eq(row[SERIES]).fillna(False).all(axis=1)
-                       & history.week_start.le(week)].sort_values("week_start")
-    calendar = pd.date_range(week - pd.Timedelta(weeks=12), week, freq="W-MON")
-    prices = past.set_index("week_start").weekly_median_price.reindex(calendar)
-    if prices.notna().any():
-        price_history_chart(prices, row.unit, height=2.8)
-    st.caption("Saved eligible weekly prices, including the selected week. Gaps stay blank; "
-               "changing shops and sparse observations can affect the median.")
     st.markdown("**Price-history measurements to inspect**")
     st.write("Read these alongside the price chart and observation counts. They describe the pattern, "
              "but do not identify which measurement caused the detector to flag it.")
@@ -589,7 +523,8 @@ def anomaly_details(cases, history, run, entry, manifest):
                "The classifier’s SHAP explanations concern next-week surge scores, not this anomaly detector.")
     st.download_button("Download anomaly measurements (CSV)",
                        measurements.to_csv(index=False).encode("utf-8-sig"),
-                       file_name=f"hargalens_anomaly_{case_id}.csv", mime="text/csv")
+                       file_name=f"hargalens_anomaly_{row.forecast_id}.csv", mime="text/csv")
+
 
 
 def prediction_summary(row, model):
@@ -597,30 +532,27 @@ def prediction_summary(row, model):
     week = pd.Timestamp(row.week_start)
     observed, forecast = st.columns(2)
     with observed:
-        st.markdown("**1 · What was recorded**")
         st.caption(date_span(week, week + pd.Timedelta(days=6)))
         st.metric("Observed median price", f"RM {row.weekly_median_price:.2f} / {row.unit}")
         change = row.get("weekly_price_change_pct", np.nan)
         if pd.notna(change) and np.isfinite(change):
             direction = "higher than" if change > 0 else "lower than" if change < 0 else "the same as"
             comparison = f"{abs(change):.1f}% {direction}" if change != 0 else direction
-            st.write(f"This was **{comparison}** the preceding calendar week's median. This is an observed change, not next week's prediction.")
+            st.caption(f"{comparison.capitalize()} the preceding week's median; this is an observed change.")
         else:
             st.caption("No supported change from the preceding calendar week is available.")
     with forecast:
-        st.markdown("**2 · What the model flags for the following week**")
         st.caption(date_span(week + pd.Timedelta(days=7), row.next_week_end))
-        st.metric("Next-week signal", "Alert to review" if row.predicted_surge else "No alert raised")
-        st.write(f"Saved surge score: **{row.model_score:.3f}** · Alert cutoff: **{model['score_cutoff']:.3f}**.")
-        st.caption("A score at or above the cutoff raises an alert for a possible median price rise of at least 10%. "
-                   "The score is not a verified probability; the model does not predict an exact RM price. No alert does not guarantee stable prices.")
-    pattern = "Flagged for review" if row.is_anomaly else "Not flagged"
-    st.caption(f"Separate anomaly detector: {pattern}. This describes observed price behaviour, not the following week's outcome.")
+        st.metric("Next-week signal", "Alert to review" if row.predicted_surge else "No alert raised",
+                  help=f"Saved surge score: {row.model_score:.5f}. Fixed alert cutoff: {model['score_cutoff']:.5f}. "
+                       "A score at or above the cutoff raises an alert; the score is not a verified probability.")
+        st.caption("Possible rise of at least 10%; not an exact price forecast or guarantee.")
 
 
-def explain_case(row, explanations, units):
+
+def explain_case(row, explanations, units, model=None):
     case = explanations.loc[explanations.cohort.eq("latest") & explanations.explanation_id.eq(row.forecast_id)]
-    st.subheader("Why the model gave this surge score (SHAP)")
+    st.markdown("**What pushed the surge score up or down?**")
     if case.empty:
         st.info("No saved SHAP explanation is available for this case. You can still inspect its recorded prices and saved signals. "
                 "Changing filters does not generate a new explanation.")
@@ -646,7 +578,6 @@ def explain_case(row, explanations, units):
     fig.tight_layout()
     st.pyplot(fig)
     plt.close(fig)
-    st.caption("Orange raises this model's output; blue lowers it. Contributions explain the model, not economic causes or percentage-point changes in surge probability.")
     feature_rows = []
     for name in largest:
         value = row.get(name, pd.NA)
@@ -661,78 +592,50 @@ def explain_case(row, explanations, units):
     with st.expander("How this explanation is calculated"):
         st.write("SHAP divides the model output into a baseline and feature contributions. Related price-history features can share information, so the bars should not be treated as independent economic causes.")
         st.caption(f"Baseline {case.base_value:.3f} + contributions = raw output {case.raw_output:.3f}; surge score {case.model_score:.3f}. Units: {units}.")
+        if model is not None:
+            st.caption(f"Saved surge score {row.model_score:.5f}; alert cutoff {model['score_cutoff']:.5f}. "
+                       "A score at or above the cutoff raises an alert. Neither the score nor the contributions are verified event probabilities.")
 
 
-def prediction_explorer(latest, explanations, model, units):
-    st.subheader("Understand a prediction")
-    st.write("Choose an item and location to separate its recorded price, next-week signal and saved SHAP explanation.")
-    if latest.empty:
-        st.info("No saved predictions match your sidebar filters. Broaden the filters to choose a case.")
-        return
-    local_ids = set(explanations.loc[explanations.cohort.eq("latest"), "explanation_id"])
-    available = latest.forecast_id.isin(local_ids)
-    st.caption(f"Saved SHAP explanations: {int(available.sum()):,} of {len(latest):,} cases in your current filters. "
-               "Coverage describes availability, not prediction accuracy.")
-    view = st.radio("Which cases?", ["All cases", "With saved SHAP explanations"], horizontal=True, key="explanation_view")
-    cases = latest.loc[available] if view == "With saved SHAP explanations" else latest
+
+
+
+
+
+def case_inspector(cases, history, explanations, run, entry, manifest):
+    """One selection and price chart for all case-level details."""
     if cases.empty:
-        st.info("No saved explanations match these filters. Choose All cases to inspect prices and signals, or broaden the sidebar filters.")
         return
-    cases = cases.sort_values(["model_score", "forecast_id"], ascending=[False, True])
+    st.subheader("Inspect a case")
     labels = {row.forecast_id: f"{row['item']} · {row.state} / {row.district} · {row.premise_type} · {row.unit}"
-              + (" · SHAP available" if row.forecast_id in local_ids else " · SHAP unavailable") for _, row in cases.iterrows()}
-    selected = st.selectbox("Choose a prediction to understand", list(labels),
-                            format_func=lambda value: labels[value], key="explanation_case")
+              for _, row in cases.iterrows()}
+    selected = st.selectbox("Choose from the watchlist", list(labels),
+                            format_func=lambda value: labels[value], key="selected_case")
     row = cases.loc[cases.forecast_id.eq(selected)].iloc[0]
-    prediction_summary(row, model)
-    explain_case(row, explanations, units)
-
-
-def explore_series(history, latest, explanations, week, units, model=None):
-    series = history[IDENTIFIERS[:-1]].drop_duplicates().sort_values(["item", "state", "district", "premise_type", "item_code"])
-    if series.empty:
-        st.info("No eligible history matches these filters.")
-        return
-    labels = (series.item + " · " + series.unit + " · " + series.state + " / " + series.district
-              + " · " + series.premise_type + " · #" + series.item_code.astype(str)).tolist()
-    default = 0
-    if not latest.empty:
-        first = latest.sort_values("model_score", ascending=False).iloc[0]
-        matches = series[SERIES].eq(first[SERIES]).fillna(False).all(axis=1).to_numpy()
-        default = int(np.flatnonzero(matches)[0])
-    index = st.selectbox("Choose an item and location", range(len(series)), index=default, format_func=lambda i: labels[i])
-    selected = series.iloc[index]
-    past = history.loc[history[SERIES].eq(selected[SERIES]).fillna(False).all(axis=1)].sort_values("week_start")
-    current = latest.loc[latest[SERIES].eq(selected[SERIES]).fillna(False).all(axis=1)]
-    st.subheader(selected["item"])
-    st.caption(f"{selected.state} / {selected.district} · {selected.premise_type} · Price per {selected.unit}")
-    window = st.radio("Price history", ["Last 12 weeks", "Last 26 weeks", "All history"], index=1, horizontal=True)
-    start = past.week_start.min()
-    if window != "All history":
-        weeks = 12 if window == "Last 12 weeks" else 26
-        start = max(start, week - pd.Timedelta(weeks=weeks - 1))
-    calendar = pd.date_range(start, week, freq="W-MON")
+    prediction_summary(row, entry["forecast_model"])
+    week = pd.Timestamp(row.week_start)
+    past = history.loc[history[SERIES].eq(row[SERIES]).fillna(False).all(axis=1)
+                       & history.week_start.le(week)].sort_values("week_start")
+    calendar = pd.date_range(week - pd.Timedelta(weeks=11), week, freq="W-MON")
     prices = past.set_index("week_start").weekly_median_price.reindex(calendar)
     if prices.notna().any():
-        price_history_chart(prices, selected.unit)
-    else:
-        st.info("No eligible observations in this time window. Choose All history to see older available prices.")
-    st.caption("Eligible original-study weekly medians, plus any refreshed eligible observations. Gaps are left blank; missing and excluded weeks are not filled. This is not all raw observations or a fixed-shop price index, and does not include the added 2024 training history.")
-    if current.empty:
-        st.warning("No supported forecast for this local series in the snapshot week. Its older price history is not a current prediction.")
-        return
-    row = current.iloc[0]
-    cols = st.columns(4)
-    change = row.get("weekly_price_change_pct", np.nan)
-    delta = f"{change:+.1f}% from the preceding week (observed)" if pd.notna(change) else None
-    cols[0].metric("Weekly median", f"RM {row.weekly_median_price:.2f}", delta=delta, delta_color="inverse")
-    cols[1].metric("Next-week surge score", f"{row.model_score:.3f}", help="Higher means greater review priority, not a verified event probability.")
-    cols[2].metric("Next-week alert", "Review" if row.predicted_surge else "No alert raised")
-    cols[3].metric("Unusual pattern", "Flagged" if row.is_anomaly else "Not flagged")
-    st.caption(f"Unit: {row.unit}. Observed {date_span(row.week_start, pd.Timestamp(row.week_start) + pd.Timedelta(days=6))}: "
-               f"{int(row.record_count)} price records, {int(row.premise_count)} shops, {int(row.observed_days)} observed days. No alert does not guarantee stable prices.")
-    st.caption("Saved validation study guidance: " + group_guidance(row.project_group, model or row.forecast_model_version))
-    explain_case(row, explanations, units)
+        price_history_chart(prices, row.unit, height=2.6)
+    st.caption("Recorded weekly medians · Gaps stay blank · Shops sampled can change.")
+    surge, anomaly, support = st.tabs(["Surge explanation (SHAP)", "Unusual pattern", "Data & export"])
+    with surge:
+        available = int(cases.has_cached_explanation.sum())
+        st.caption(f"Saved SHAP available for {available:,} of {len(cases):,} cases in this watchlist. "
+                   "These contributions describe the model, not economic causes.")
+        explain_case(row, explanations, manifest["protocol"]["units"], entry["forecast_model"])
+    with anomaly:
+        anomaly_details(row, run, entry, manifest)
+    with support:
+        st.write(f"{int(row.record_count)} price records · {int(row.premise_count)} shops · "
+                 f"{int(row.observed_days)} observed days in the selected week.")
+        st.caption("This is a sample of recorded prices, not a complete shop census. Sparse coverage and changing shops can affect medians.")
+        st.write(group_guidance(row.project_group, entry["forecast_model"]))
+        download_price_brief(row, prices, explanations, entry["forecast_model"], entry.get("refresh"))
+
 
 
 def district_key(state, district):
@@ -961,8 +864,7 @@ def local_price_explorer(history, latest, week, explanations, units, model):
 
 def global_explanation(importance):
     st.subheader("What the model tends to use overall (SHAP)")
-    st.write("This is an overall summary across a saved reference sample. To understand one prediction, "
-             "use the Understand a prediction tab instead.")
+    st.write("This summarises a saved reference sample. For one prediction, select a case on Overview.")
     if importance.empty:
         st.info("No saved overall SHAP summary is available.")
         return
@@ -979,6 +881,7 @@ def global_explanation(importance):
         st.caption("Mean absolute SHAP on a random sample of up to 200 original 2025 training inputs. "
                    "This is descriptive, not representative importance for the full longer-history training population. "
                    "Related price-history features can share information.")
+
 
 
 def model_and_coverage(entry, latest, history):
@@ -1112,40 +1015,19 @@ def main():
              "Cases above the fixed review cutoff for a possible price rise of at least 10% next week. Some alerts will be wrong.",
              "A separate check found unusual observed prices. This is not a prediction of next week's price."]):
             col.metric(label, f"{value:,}", help=help_text)
-    st.caption("Start with your area in the sidebar. Open Understand a prediction for dates, signals and SHAP explanations; "
-               "use Unusual patterns in the watchlist for anomaly details. Alerts are suggestions to investigate, not certain price rises.")
-    if entry["forecast_model"]["version"] == "longer_2024_2025" or entry["forecast_model"].get("group_evidence"):
-        st.caption("The model works better for some foods than others. See How it works for the evidence and limitations.")
-    with st.expander("First visit? A quick guide"):
-        steps = st.columns(3)
-        steps[0].markdown("**1 · Find your area**")
-        steps[0].write("Use the sidebar to choose your state, district and food item. Counts and charts follow your filters.")
-        steps[1].markdown("**2 · Understand the signal**")
-        steps[1].write("A review alert concerns next week. An unusual-pattern flag concerns observed prices. Either signal needs investigation.")
-        steps[2].markdown("**3 · Check the context**")
-        steps[2].write("Use Understand a prediction for a saved SHAP explanation, or Price map & playback for weekly prices. "
-                       "A missing forecast does not mean prices will stay stable.")
+    st.caption("Filter your area → Choose a watchlist view → Inspect one case below. Prices are recorded observations; signals are suggestions to investigate.")
     if latest.empty:
         st.warning("No supported latest forecasts match these filters. Older history may still be available. This does not mean no surge risk.")
-    review, local_map, predictions, evidence = st.tabs([
-        "Latest saved prices", "Price map & playback", "Understand a prediction", "How it works"])
+    review, local_map, evidence = st.tabs(["Overview", "Price map", "About & evidence"])
     with review:
-        spotlight(history, latest, explanations, entry["forecast_model"], refresh, manifest["protocol"]["units"])
-        unusual_cases = review_list(latest, refresh, entry["forecast_model"])
-        if unusual_cases is not None:
-            anomaly_details(unusual_cases, history, run, entry, manifest)
-        with st.expander("Food-group overview"):
-            group_overview(latest)
-        with st.expander("Find a specific item and location"):
-            explore_series(history, latest, explanations, week, manifest["protocol"]["units"], entry["forecast_model"])
+        cases = review_list(latest, refresh, entry["forecast_model"])
+        case_inspector(cases, history, explanations, run, entry, manifest)
     with local_map:
         playing = st.session_state.get("price_playing", False)
         st.session_state["playback_timer_active"] = playing
         # Only the map section updates during playback; no models or explanations are computed.
         st.fragment(run_every=1.8 if playing else None)(local_price_explorer)(
             history, latest, week, explanations, manifest["protocol"]["units"], entry["forecast_model"])
-    with predictions:
-        prediction_explorer(latest, explanations, entry["forecast_model"], manifest["protocol"]["units"])
     with evidence:
         st.subheader("What the dashboard tells you")
         st.markdown("**Recorded price:** the middle price recorded for that item, district, shop type and week.\n\n"
@@ -1153,10 +1035,13 @@ def main():
                     "**Unusual pattern:** a separate check found unusual recent price behaviour. It is not a forecast or proof of an error.\n\n"
                     "**Grey map area:** there is not enough comparable recorded data. It does not mean prices are low or stable.")
         st.caption("This is a historical research demonstration, not a live warning service. No alert does not guarantee a stable price.")
-        global_explanation(importance)
-        with st.expander("Model results and research details"):
+        with st.expander("Advanced analysis: SHAP, model results and coverage"):
+            global_explanation(importance)
             model_and_coverage(entry, latest, history)
+        with st.expander("Food-group alert overview"):
+            group_overview(latest)
     st.caption("HargaLens · Malaysian PriceCatcher · Research prototype. Observed local medians; no affordability benefit has been established.")
+
 
 
 if __name__ == "__main__":
