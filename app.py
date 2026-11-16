@@ -207,6 +207,9 @@ def load_exports(run_name, signature):
         raise ValueError("Local explanations do not match the forecasts.")
     if not latest.has_cached_explanation.eq(latest.forecast_id.isin(local.index)).all():
         raise ValueError("Explanation availability disagrees with the cache.")
+    if manifest["protocol"].get("latest_rows") == "all" and (
+            len(local) != len(latest) or set(local.index) != set(latest.forecast_id)):
+        raise ValueError("This export declares full SHAP coverage but explanations are missing.")
     shap_columns = ["shap__" + name for name in manifest["protocol"]["features"]]
     explanation_columns = shap_columns + ["base_value", "raw_output", "model_score"]
     if not np.isfinite(explanations[explanation_columns].to_numpy(dtype=float)).all():
@@ -981,6 +984,50 @@ def global_explanation(importance):
                    "Related price-history features can share information.")
 
 
+def test_evaluation_summary(run, model, manifest):
+    """Show only completed, hashed results for this exact model and test snapshot."""
+    test_hash = manifest.get("upstream_sha256", {}).get("prepared/holdout/test.parquet")
+    matches = []
+    for path in (run / "research" / "12_test_set_evaluation").glob("*/evaluation_manifest.json"):
+        record = read_json(path)
+        identity = record.get("identity", {})
+        if (record.get("status") == "completed" and test_hash is not None and model.get("deployment_id")
+                and identity.get("deployment_id") == model.get("deployment_id")
+                and identity.get("model_sha256") == model["sha256"]
+                and identity.get("test_sha256") == test_hash
+                and identity.get("score_cutoff") == model["score_cutoff"]):
+            matches.append((record.get("completed_at", ""), path, record))
+    if not matches:
+        st.caption("No matching saved test evaluation is available here. Research 12 evaluates the frozen model separately; the dashboard never runs it automatically.")
+        return
+    _, path, record = sorted(matches, key=lambda item: (item[0], str(item[1])))[-1]
+    for name in ["overall_metrics.csv", "confusion_matrix.csv"]:
+        expected = record["output_sha256"][name]
+        if file_hash(path.parent / name) != expected:
+            raise ValueError("Saved test results changed; restore their matching evaluation outputs.")
+    overall = pd.read_csv(path.parent / "overall_metrics.csv")
+    if len(overall) != 1:
+        raise ValueError("Expected one overall test result.")
+    row = overall.iloc[0]
+    if int(row.rows) != record["test_rows"] or int(row.tp + row.fp + row.fn + row.tn) != int(row.rows):
+        raise ValueError("Test support and confusion counts disagree.")
+    with st.expander("April–June test results (previously exposed)"):
+        st.write("The same frozen classifier and cutoff were scored on saved test rows. "
+                 "This period was inspected during earlier development, so these are retrospective results, not an untouched final test.")
+        cols = st.columns(4)
+        for col, name, label in zip(cols, ["average_precision", "precision", "recall", "f1"],
+                                    ["Average precision", "Precision", "Recall", "F1"]):
+            value = row[name]
+            shown = "Unavailable" if pd.isna(value) else f"{value:.1%}" if name in {"precision", "recall"} else f"{value:.3f}"
+            col.metric(label, shown)
+        weeks = record.get("actual_outcome_weeks", {})
+        st.caption(f"{int(row.rows):,} eligible cases; {int(row.observed_surges):,} observed surges. "
+                   f"Outcome weeks start {weeks.get('first', 'unavailable')} through {weeks.get('last', 'unavailable')}.")
+        st.dataframe(pd.read_csv(path.parent / "confusion_matrix.csv"), hide_index=True, width="stretch")
+        st.caption("Rows are actual outcomes; columns are predictions. Different periods and surge frequencies affect comparison with validation. These results do not change the model or its alerts.")
+        st.caption(f"Matching evaluation: {path.parent.name}. If several matching runs exist, the latest completion is shown; selection never uses the highest score.")
+
+
 def model_and_coverage(entry, latest, history):
     model = entry["forecast_model"]
     st.subheader("Evidence for the displayed forecasting model")
@@ -1156,6 +1203,10 @@ def main():
         global_explanation(importance)
         with st.expander("Model results and research details"):
             model_and_coverage(entry, latest, history)
+            try:
+                test_evaluation_summary(run, entry["forecast_model"], manifest)
+            except (OSError, ValueError, KeyError, TypeError) as error:
+                st.warning(f"Saved test results could not be verified: {error}")
     st.caption("HargaLens · Malaysian PriceCatcher · Research prototype. Observed local medians; no affordability benefit has been established.")
 
 
