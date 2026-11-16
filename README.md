@@ -80,6 +80,7 @@ The current deployment and registered models must be verified from real saved ma
 | 09 | Label/anomaly audit; requires completed 05/11 |
 | 10 | Wholesale availability audit; reads existing training caches, no downloads or fitting |
 | 11 | Fixed-parameter festival-calendar experiment; requires completed 09b Optuna outputs |
+| 12 | Predict and evaluate the frozen dashboard model on the existing April–June 2026 test set; no fitting or dashboard updates |
 
 Research notebooks are numbered independently from the main pipeline. Renaming does not change their prerequisites or make them a sequence to run in order. Saved data/output folders keep their original names.
 
@@ -100,6 +101,8 @@ Research notebooks are numbered independently from the main pipeline. Renaming d
 Old notebook names are resolved by `pricecatcher_config.py` for legacy callers and saved input references. Hash checks still apply: edited notebook source has a new hash, so exact historical reproduction may require the original Git revision. No saved hashes or model manifests were rewritten.
 
 The research notebooks retain their saved results and methodological caveats. Saved outputs are historical records, not evidence of a fresh cloud execution.
+
+For test-set predictions, open [research/12_test_set_evaluation.ipynb](research/12_test_set_evaluation.ipynb) in the matching saved Python environment on your Mac and **Restart Kernel and Run All**. It uses the existing deployment pin, model, cutoff and `test.parquet`; there are no new dates or protocol modes to configure. It displays and saves predictions, overall metrics, a confusion matrix, weekly metrics and food-group metrics under the active run's `research/12_test_set_evaluation/<evaluation-id>/`. Existing main notebooks, models, dashboard exports and registrations are unchanged. Results must be described as a retrospective evaluation on a previously exposed test period, not an untouched independent test. Missing/mismatched artifacts stop execution; no retraining or downloading is performed.
 
 ## Evaluation and claims
 
