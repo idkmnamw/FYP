@@ -332,7 +332,7 @@ def spotlight(history, latest, explanations, model, refresh=None, units="saved m
     if latest.empty:
         return
     st.subheader("Prices worth a closer look")
-    st.caption("Start with a price story. These are the three highest-scoring cases in your filters; a high score is a reason to investigate, not a confirmed surge.")
+    st.caption("Start with a price story: the three highest-scoring cases in your filters.")
     candidates = latest.sort_values(["model_score", "forecast_id"], ascending=[False, True]).head(3)
     if st.session_state.get("spotlight_id") not in candidates.forecast_id.tolist():
         st.session_state["spotlight_id"] = candidates.iloc[0].forecast_id
@@ -471,7 +471,7 @@ def review_list(latest, refresh=None, model=None):
         "Weekly median (RM)": st.column_config.NumberColumn(format="%.2f", help="The middle observed price this week, per listed unit. This is not the cheapest available price."),
         "Anomaly score": st.column_config.NumberColumn(format="%.4f", help="Larger means a more unusual observed pattern; this is separate from the next-week surge score."),
         "Surge score": st.column_config.NumberColumn(format="%.3f", help="The next-week surge model's score, from 0 to 1. Higher scores receive greater review priority; 0.9 is not a verified 90% chance.")})
-    st.caption("A review alert concerns a possible increase of at least 10% next week. An unusual-pattern flag concerns the observed price behaviour. Review scores help prioritise investigation; they are not verified probabilities.")
+    st.caption("A review alert concerns a possible increase of at least 10% next week. An unusual-pattern flag concerns the observed price behaviour. Use both signals to prioritise review.")
     download = table.copy()
     download["Observed week starting"] = shown.week_start.dt.strftime("%Y-%m-%d").to_numpy()
     download["Forecast week starting"] = (shown.week_start + pd.Timedelta(days=7)).dt.strftime("%Y-%m-%d").to_numpy()
@@ -586,10 +586,10 @@ def anomaly_details(cases, history, run, entry, manifest):
     measurements = anomaly_measurements(row)
     st.dataframe(measurements, hide_index=True, width="stretch", column_config={
         "Value (%)": st.column_config.NumberColumn(format="%.2f%%")})
-    st.caption("These measurements are calculated from the saved price features before imputation. "
-               "Blank values mean the required feature was unavailable; the detector uses training-fitted median imputation and missing indicators. "
-               "These are context measurements, not feature contributions or proof of why the case was flagged. "
-               "The classifier’s SHAP explanations concern next-week surge scores, not this anomaly detector.")
+    with st.expander("How these measurements are calculated"):
+        st.write("These saved features are shown before imputation. Blank values were unavailable; the detector uses "
+                 "training-fitted median imputation and missing indicators. These are context measurements, not feature "
+                 "contributions. SHAP explains the separate surge classifier, not this detector.")
     st.download_button("Download anomaly measurements (CSV)",
                        measurements.to_csv(index=False).encode("utf-8-sig"),
                        file_name=f"hargalens_anomaly_{case_id}.csv", mime="text/csv")
@@ -615,8 +615,7 @@ def prediction_summary(row, model):
         st.caption(date_span(week + pd.Timedelta(days=7), row.next_week_end))
         st.metric("Next-week signal", "Alert to review" if row.predicted_surge else "No alert raised")
         st.write(f"Saved surge score: **{row.model_score:.3f}** · Alert cutoff: **{model['score_cutoff']:.3f}**.")
-        st.caption("A score at or above the cutoff raises an alert for a possible median price rise of at least 10%. "
-                   "The score is not a verified probability; the model does not predict an exact RM price. No alert does not guarantee stable prices.")
+        st.caption("The alert concerns a possible rise of at least 10% in next week's median, not an exact future RM price.")
     pattern = "Flagged for review" if row.is_anomaly else "Not flagged"
     st.caption(f"Separate anomaly detector: {pattern}. This describes observed price behaviour, not the following week's outcome.")
 
@@ -631,13 +630,17 @@ def explain_case(row, explanations, units):
     case = case.iloc[0]
     values = pd.Series({name.removeprefix("shap__"): float(case[name]) for name in case.index if name.startswith("shap__")})
     raising = values.loc[values.gt(0)].nlargest(2).index
-    if len(raising):
-        st.write("Compared with the model's baseline, the strongest features pushing the score **up** are **" + "** and **".join(FEATURE_NAMES.get(name, name) for name in raising) + "**.")
     lowering = values.loc[values.lt(0)].nsmallest(2).index
+    reasons = []
+    if len(raising):
+        reasons.append("**" + "** and **".join(FEATURE_NAMES.get(name, name) for name in raising)
+                       + "** contributed most to raising this model score")
     if len(lowering):
-        st.write("The strongest features pushing it **down** are **" + "** and **".join(FEATURE_NAMES.get(name, name) for name in lowering) + "**.")
-    st.caption("Orange pushes the model output up; blue pushes it down, relative to its baseline. "
-               "Longer bars mean a larger contribution for this case. A feature can push up even when no alert is raised.")
+        reasons.append("**" + "** and **".join(FEATURE_NAMES.get(name, name) for name in lowering)
+                       + "** contributed most to lowering it")
+    st.write("Relative to the model's baseline: " + "; ".join(reasons) + "." if reasons
+             else "No saved feature contribution moves this score away from the model's baseline.")
+    st.caption("Orange raises the model output; blue lowers it. Longer bars mean larger contributions, not economic causes.")
     largest = values.abs().nlargest(8).index
     shown = values.loc[largest].rename(index=FEATURE_NAMES).copy()
     shown.loc["Other features (combined)"] = values.drop(largest).sum()
@@ -649,7 +652,6 @@ def explain_case(row, explanations, units):
     fig.tight_layout()
     st.pyplot(fig)
     plt.close(fig)
-    st.caption("Orange raises this model's output; blue lowers it. Contributions explain the model, not economic causes or percentage-point changes in surge probability.")
     feature_rows = []
     for name in largest:
         value = row.get(name, pd.NA)
@@ -662,7 +664,7 @@ def explain_case(row, explanations, units):
         st.dataframe(pd.DataFrame(feature_rows), hide_index=True, width="stretch")
         st.caption("These are saved input values, not suggested prices or changes to make. Missing inputs may have been filled by training-fitted preprocessing.")
     with st.expander("How this explanation is calculated"):
-        st.write("SHAP divides the model output into a baseline and feature contributions. Related price-history features can share information, so the bars should not be treated as independent economic causes.")
+        st.write("SHAP divides the model output into a baseline and feature contributions. Related price-history features can share information. Contributions are in model-output units, not percentage-point changes in surge probability.")
         st.caption(f"Baseline {case.base_value:.3f} + contributions = raw output {case.raw_output:.3f}; surge score {case.model_score:.3f}. Units: {units}.")
 
 
@@ -720,7 +722,7 @@ def explore_series(history, latest, explanations, week, units, model=None):
         price_history_chart(prices, selected.unit)
     else:
         st.info("No eligible observations in this time window. Choose All history to see older available prices.")
-    st.caption("Eligible original-study weekly medians, plus any refreshed eligible observations. Gaps are left blank; missing and excluded weeks are not filled. This is not all raw observations or a fixed-shop price index, and does not include the added 2024 training history.")
+    st.caption("Eligible study and refreshed weekly medians. Gaps stay blank; the chart excludes the added 2024 training history.")
     if current.empty:
         st.warning("No supported forecast for this local series in the snapshot week. Its older price history is not a current prediction.")
         return
@@ -949,7 +951,7 @@ def local_price_explorer(history, latest, week, explanations, units, model):
         else:
             forecast = current.iloc[0]
             st.write("**Next-week signal: " + ("Alert to review**" if forecast.predicted_surge else "No alert raised**"))
-            st.caption("This is a model signal, not a guaranteed price change. " + group_guidance(row.project_group, model))
+            st.caption("Saved validation guidance: " + group_guidance(row.project_group, model))
             with st.expander("Why this model signal?"):
                 explain_case(forecast, explanations, units)
     with st.expander("Compare recorded district prices"):
@@ -957,7 +959,7 @@ def local_price_explorer(history, latest, week, explanations, units, model):
         table = table.rename(columns={"state": "State", "district": "District", "weekly_median_price": f"Median (RM / {item.unit})",
                                       "record_count": "Records", "premise_count": "Shops", "observed_days": "Days"})
         st.dataframe(table, hide_index=True, width="stretch")
-    st.caption("Sampled prices do not guarantee the cheapest shop or savings. Missing/excluded weeks stay blank. "
+    st.caption("Sampled medians summarise the available recorded prices. "
                "Boundaries: Department of Statistics Malaysia, data-open (Open Data License). "
                "Boundary names may differ from historical PriceCatcher locations. No official endorsement.")
 
@@ -982,6 +984,33 @@ def global_explanation(importance):
         st.caption("Mean absolute SHAP on a random sample of up to 200 original 2025 training inputs. "
                    "This is descriptive, not representative importance for the full longer-history training population. "
                    "Related price-history features can share information.")
+
+
+def verified_test_baselines(folder, record, overall):
+    """Read the optional comparison only when its hash and test support agree."""
+    expected = record["output_sha256"].get("baseline_metrics.csv")
+    if expected is None:
+        return None  # Earlier evaluations remain usable without inventing baseline values.
+    path = folder / "baseline_metrics.csv"
+    if file_hash(path) != expected:
+        raise ValueError("Saved baseline comparison changed; restore its matching evaluation output.")
+    table = pd.read_csv(path)
+    if not {"method", "rows", "observed_surges", "average_precision"}.issubset(table.columns):
+        raise ValueError("Saved baseline comparison is missing required columns.")
+    names = {"Frozen selected model": "Frozen model", "Always no surge": "Constant ranking (prevalence)",
+             "Current-change rule (>=10%)": "Current-change rule",
+             "Training food-group rate (ranking only)": "Training food-group rate"}
+    if (table.empty or table.method.duplicated().any() or not table.method.isin(names).all()
+            or table.method.eq("Frozen selected model").sum() != 1
+            or not table.rows.eq(overall.rows).all()
+            or not table.observed_surges.eq(overall.observed_surges).all()):
+        raise ValueError("Saved baseline methods or test populations disagree.")
+    ap = table.average_precision
+    if ((ap.notna() & (~np.isfinite(ap) | ~ap.between(0, 1))).any()
+            or not np.isclose(table.loc[table.method.eq("Frozen selected model"), "average_precision"].iloc[0],
+                              overall.average_precision, equal_nan=True)):
+        raise ValueError("Saved model and baseline AP values disagree or are invalid.")
+    return table.assign(label=table.method.map(names))
 
 
 def test_evaluation_summary(run, model, manifest):
@@ -1011,21 +1040,39 @@ def test_evaluation_summary(run, model, manifest):
     row = overall.iloc[0]
     if int(row.rows) != record["test_rows"] or int(row.tp + row.fp + row.fn + row.tn) != int(row.rows):
         raise ValueError("Test support and confusion counts disagree.")
+    baselines = verified_test_baselines(path.parent, record, row)
+    st.subheader("April–June test performance")
+    st.write("Retrospective evaluation of the frozen model. This period was previously inspected during development; "
+             "it is not an untouched independent test.")
+    cols = st.columns(4)
+    for col, name, label in zip(cols, ["average_precision", "precision", "recall", "f1"],
+                                ["Average precision", "Precision", "Recall", "F1"]):
+        value = row[name]
+        shown = "Unavailable" if pd.isna(value) else f"{value:.1%}" if name in {"precision", "recall"} else f"{value:.3f}"
+        col.metric(label, shown)
+    if baselines is not None and baselines.average_precision.notna().any():
+        shown = baselines.dropna(subset=["average_precision"]).sort_values("average_precision", ascending=True)
+        fig, ax = plt.subplots(figsize=(8, 2.5))
+        ax.barh(shown.label, shown.average_precision,
+                color=np.where(shown.method.eq("Frozen selected model"), "#087f8c", "#a4b4bf"))
+        for position, value in enumerate(shown.average_precision):
+            ax.text(value + 0.008, position, f"{value:.3f}", va="center")
+        ax.set(xlabel="Average precision (AP): higher means better ranking", xlim=(0, min(1.12, shown.average_precision.max() + 0.12)))
+        ax.spines[["top", "right"]].set_visible(False)
+        fig.tight_layout()
+        st.pyplot(fig)
+        plt.close(fig)
+        st.caption("Identical test rows for every method. Constant-ranking AP equals test surge prevalence; "
+                   "food-group rates, when shown, come from training only. AP is not classification accuracy.")
+    else:
+        st.caption("No verified baseline AP comparison is available for this saved evaluation.")
     with st.expander("April–June test results (previously exposed)"):
-        st.write("The same frozen classifier and cutoff were scored on saved test rows. "
-                 "This period was inspected during earlier development, so these are retrospective results, not an untouched final test.")
-        cols = st.columns(4)
-        for col, name, label in zip(cols, ["average_precision", "precision", "recall", "f1"],
-                                    ["Average precision", "Precision", "Recall", "F1"]):
-            value = row[name]
-            shown = "Unavailable" if pd.isna(value) else f"{value:.1%}" if name in {"precision", "recall"} else f"{value:.3f}"
-            col.metric(label, shown)
         weeks = record.get("actual_outcome_weeks", {})
         st.caption(f"{int(row.rows):,} eligible cases; {int(row.observed_surges):,} observed surges. "
                    f"Outcome weeks start {weeks.get('first', 'unavailable')} through {weeks.get('last', 'unavailable')}.")
         st.dataframe(pd.read_csv(path.parent / "confusion_matrix.csv"), hide_index=True, width="stretch")
-        st.caption("Rows are actual outcomes; columns are predictions. Different periods and surge frequencies affect comparison with validation. These results do not change the model or its alerts.")
-        st.caption(f"Matching evaluation: {path.parent.name}. If several matching runs exist, the latest completion is shown; selection never uses the highest score.")
+        st.caption("Rows are actual outcomes; columns are predictions. Different periods and surge frequencies affect comparison with validation.")
+        st.caption(f"Matching evaluation: {path.parent.name}. The latest matching completion is shown, never the highest score.")
 
 
 def model_and_coverage(entry, latest, history):
@@ -1200,13 +1247,18 @@ def main():
                     "**Unusual pattern:** a separate check found unusual recent price behaviour. It is not a forecast or proof of an error.\n\n"
                     "**Grey map area:** there is not enough comparable recorded data. It does not mean prices are low or stable.")
         st.caption("This is a historical research demonstration, not a live warning service. No alert does not guarantee a stable price.")
+        try:
+            test_evaluation_summary(run, entry["forecast_model"], manifest)
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            st.warning(f"Saved test results could not be verified: {error}")
         global_explanation(importance)
         with st.expander("Model results and research details"):
             model_and_coverage(entry, latest, history)
-            try:
-                test_evaluation_summary(run, entry["forecast_model"], manifest)
-            except (OSError, ValueError, KeyError, TypeError) as error:
-                st.warning(f"Saved test results could not be verified: {error}")
+        with st.expander("Reading scores, explanations and missing prices"):
+            st.write("Review scores prioritise investigation; they are not verified probabilities. An alert is not a guaranteed rise, "
+                     "and no alert does not guarantee a stable price. SHAP explains the classifier's output, not economic causes "
+                     "or the separate anomaly detector. Missing and excluded weeks stay blank; changing shops and sparse "
+                     "observations can affect local medians.")
     st.caption("HargaLens · Malaysian PriceCatcher · Research prototype. Observed local medians; no affordability benefit has been established.")
 
 
