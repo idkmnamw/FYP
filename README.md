@@ -46,7 +46,6 @@ python prepare.py --experiment all       # Prepare all chronological splits
 python prepare.py --rerun-all           # New reproduction through 10; no deployment
 python prepare.py --export-environment  # Write installed direct-package versions
 python prepare.py --verify-checkpoint   # Read-only saved model/score/SHAP check
-python prepare.py --expand-shap         # Explain ALL rows of the current saved snapshot
 ```
 
 Uncached downloads require access to `storage.data.gov.my`. Preserve TLS, source hashes and ETag checks. If a source or manifest differs, restore the matching snapshot or use a separate new run; do not change hashes to make verification pass.
@@ -107,7 +106,7 @@ For test-set predictions, open [research/12_test_set_evaluation.ipynb](research/
 
 The report workflow is **freeze/publish the chosen model with main 11–12 → evaluate that model with research 12 → report all test groups and limitations**. Do not use test results to choose a replacement model or cutoff. The dashboard's **How it works → Model results and research details → April–June test results** reads completed local results only when their model, deployment, test-file hash and cutoff match the displayed snapshot; CSV hashes are checked. It never runs evaluation automatically.
 
-For full local SHAP coverage of the snapshot already on your dashboard, run `python prepare.py --expand-shap`, then `python prepare.py --verify-checkpoint` and restart Streamlit. This keeps the same observation week, prices, scores, cutoffs and anomaly flags. It creates a separate full-coverage cache, retains the old cache, archives the previous entry and publishes only after checking all explained scores. No new price files, future outcomes or registered months are opened. If full coverage is already verified, the command changes nothing. You do **not** need to rerun main 12 or 13 just to expand the existing snapshot.
+For full local SHAP coverage of the snapshot already on your dashboard, open main **12_shap_and_dashboard_inputs.ipynb**, leave `EXPORT_MODE = "auto"`, and use **Restart Kernel → Run All**. It expands or verifies every supported latest row and prints the actual coverage (for example, 5,343 / 5,343). This keeps the saved observation week, prices, model scores, cutoffs and anomaly flags. Earlier caches are retained; no new price files or registered outcomes are opened. Restart Streamlit afterwards. A first export or newly pinned deployment uses the original export route automatically. Run main 13 only when you want newer observations, subject to its registration guard. `prepare.py --verify-checkpoint` remains an optional additional check.
 
 Future runs of main 12 and 13 also explain **every supported latest case**, using batches of at most 128 rows (smaller when needed for the dense-memory guard). The historical 200-row sample remains only for the descriptive global SHAP summary, and the 100-row linear-model background is unchanged; neither caps the latest-case explanations. Actual compute time depends on the saved model and machine. Main 13 still enforces its source/registration guards. Older published snapshots remain usable with their actual partial-coverage counts until expanded. A new verification fingerprint preserves earlier research 12 results if export provenance changes; reproducing scores is not a new independent test.
 
