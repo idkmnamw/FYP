@@ -437,6 +437,8 @@ def review_list(latest, refresh=None, model=None):
         shown = shown.loc[shown.predicted_surge.eq(1)]
     elif view == "Unusual patterns":
         shown = shown.loc[shown.is_anomaly]
+        shown = shown.sort_values(["anomaly_score", "forecast_id"], ascending=[False, True])
+        st.caption("Ranked by the separate anomaly score: larger scores indicate more unusual observed patterns.")
     if view == "Priority shortlist":
         capacity = st.selectbox("Maximum alerts to review", [25, 50, 100], key="review_capacity")
         shown = shown.head(capacity)
@@ -450,7 +452,7 @@ def review_list(latest, refresh=None, model=None):
         st.info("No matching rows in this view. Below-cutoff scores do not rule out future surges.")
         return
     table = shown[["project_group", "item", "state", "district", "premise_type", "weekly_median_price", "unit",
-                   "model_score", "predicted_surge", "is_anomaly", "has_cached_explanation"]].copy()
+                   "model_score", "anomaly_score", "predicted_surge", "is_anomaly", "has_cached_explanation"]].copy()
     table["predicted_surge"] = table.predicted_surge.map({1: "Review next week", 0: "No alert raised"})
     table["is_anomaly"] = table.is_anomaly.map({True: "Flagged", False: "Not flagged"})
     table["has_cached_explanation"] = table.has_cached_explanation.map({True: "Available", False: "Not cached"})
@@ -458,6 +460,7 @@ def review_list(latest, refresh=None, model=None):
                                for group, version in zip(shown.project_group, shown.forecast_model_version)]
     table = table.rename(columns={"project_group": "Food group", "item": "Item", "state": "State", "district": "District",
         "premise_type": "Shop type", "weekly_median_price": "Weekly median (RM)", "unit": "Unit", "model_score": "Review score",
+        "anomaly_score": "Anomaly score",
         "predicted_surge": "Next-week alert", "is_anomaly": "Unusual pattern", "has_cached_explanation": "Explanation"})
     show_details = st.checkbox("Show research details", help="Add model scores, explanation availability and study evidence.")
     display_table = table.assign(Location=table.State + " / " + table.District)
@@ -465,6 +468,7 @@ def review_list(latest, refresh=None, model=None):
                                                                "Unit", "Next-week alert", "Unusual pattern"]
     st.dataframe(display_table, column_order=visible_columns, hide_index=True, width="stretch", height=380, column_config={
         "Weekly median (RM)": st.column_config.NumberColumn(format="%.2f", help="The middle observed price this week, per listed unit. This is not the cheapest available price."),
+        "Anomaly score": st.column_config.NumberColumn(format="%.4f", help="Larger means a more unusual observed pattern; this is separate from the next-week surge score."),
         "Review score": st.column_config.NumberColumn(format="%.3f", help="A model score from 0 to 1. Higher scores receive greater review priority; 0.9 is not a verified 90% chance.")})
     st.caption("A review alert concerns a possible increase of at least 10% next week. An unusual-pattern flag concerns the observed price behaviour. Review scores help prioritise investigation; they are not verified probabilities.")
     download = table.copy()
@@ -484,6 +488,105 @@ def review_list(latest, refresh=None, model=None):
         download["Snapshot type"] = refresh["snapshot_type"]
     st.download_button("Download these rows (CSV)", download.to_csv(index=False).encode("utf-8-sig"),
                        file_name="hargalens_price_review.csv", mime="text/csv")
+    return shown if view == "Unusual patterns" else None
+
+
+def saved_anomaly_cutoff(run, entry, manifest):
+    """Read the detector threshold only from an export-linked, verified manifest."""
+    model = entry["anomaly_model"]
+    relative = model.get("manifest_path", "07_anomalies/anomaly_manifest.json")
+    expected = manifest.get("upstream_sha256", {}).get(relative)
+    if expected is None:
+        return None
+    path = inside(run, relative)
+    if file_hash(path) != expected:
+        raise ValueError("The saved detector manifest differs from the dashboard export.")
+    record = read_json(path)
+    if record["model_sha256"] != model["sha256"] or record["protocol"]["schema_version"] != 1:
+        raise ValueError("The saved detector metadata does not match this dashboard.")
+    cutoff = float(record["training_score_threshold"])
+    if not np.isfinite(cutoff):
+        raise ValueError("The saved detector cutoff is not finite.")
+    return cutoff
+
+
+def anomaly_measurements(row):
+    """Display the six version-1 measurements before training-median imputation."""
+    def number(name):
+        value = row.get(name, np.nan)
+        return float(value) if pd.notna(value) and np.isfinite(value) else np.nan
+
+    def ratio(numerator, denominator, change=False):
+        top, bottom = number(numerator), number(denominator)
+        if not np.isfinite(top) or not np.isfinite(bottom) or bottom <= 0:
+            return np.nan
+        return 100 * (top / bottom - (1 if change else 0))
+
+    return pd.DataFrame({
+        "Measurement": ["Change from previous week", "Change from two weeks earlier",
+                        "Change from four weeks earlier", "Difference from previous four-week mean",
+                        "Within-week price variation", "Previous four-week price variation"],
+        "Value (%)": [number("weekly_price_change_pct"),
+                      ratio("weekly_median_price", "lag_2w_price", change=True),
+                      ratio("weekly_median_price", "lag_4w_price", change=True),
+                      ratio("weekly_median_price", "rolling_mean_4w", change=True),
+                      ratio("weekly_std_price", "weekly_median_price"),
+                      ratio("rolling_std_4w", "rolling_mean_4w")],
+        "Meaning": ["Current median compared with the exact previous calendar week",
+                    "Current median compared with the exact week two weeks earlier",
+                    "Current median compared with the exact week four weeks earlier",
+                    "Current median compared with the mean of available prior four-week medians",
+                    "Standard deviation of current-week observations divided by current median",
+                    "Standard deviation divided by mean of available prior four-week medians"],
+    })
+
+
+def anomaly_details(cases, history, run, entry, manifest):
+    st.subheader("Anomaly details")
+    labels = {row.forecast_id: f"{row['item']} · {row.state} / {row.district} · {row.premise_type} · {row.unit}"
+              for _, row in cases.iterrows()}
+    case_id = st.selectbox("Choose an unusual pattern to inspect", list(labels),
+                           format_func=lambda value: labels[value], key="anomaly_case")
+    row = cases.loc[cases.forecast_id.eq(case_id)].iloc[0]
+    week = pd.Timestamp(row.week_start)
+    st.caption(f"Observed week: {date_span(week, week + pd.Timedelta(days=6))}. "
+               "This flag concerns observed price behaviour, separately from the next-week surge alert.")
+    try:
+        cutoff = saved_anomaly_cutoff(run, entry, manifest)
+        if cutoff is not None and bool(row.is_anomaly) != (float(row.anomaly_score) > cutoff):
+            raise ValueError("The saved flag disagrees with the detector cutoff.")
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        cutoff = None
+        st.warning(f"The detector cutoff could not be verified: {error}")
+    cols = st.columns(3)
+    cols[0].metric("Anomaly score", f"{row.anomaly_score:.4f}")
+    cols[1].metric("Frozen anomaly cutoff", "Unavailable" if cutoff is None else f"{cutoff:.4f}")
+    cols[2].metric("Observed weekly median", f"RM {row.weekly_median_price:.2f} / {row.unit}")
+    st.caption("Larger anomaly scores indicate more unusual patterns; they are not probabilities. "
+               "A score strictly above the saved detector cutoff is flagged. This cutoff is separate from the 10% next-week surge definition.")
+    if cutoff is None:
+        st.caption("No verified cutoff is available for this saved export; no replacement cutoff was inferred.")
+    st.write(f"Observation support: {int(row.record_count)} price records, "
+             f"{int(row.premise_count)} shops and {int(row.observed_days)} observed days.")
+    past = history.loc[history[SERIES].eq(row[SERIES]).fillna(False).all(axis=1)
+                       & history.week_start.le(week)].sort_values("week_start")
+    calendar = pd.date_range(week - pd.Timedelta(weeks=12), week, freq="W-MON")
+    prices = past.set_index("week_start").weekly_median_price.reindex(calendar)
+    if prices.notna().any():
+        price_history_chart(prices, row.unit, height=2.8)
+    st.caption("Saved eligible weekly prices, including the selected week. Gaps stay blank; "
+               "changing shops and sparse observations can affect the median.")
+    st.markdown("**Price measurements used by the detector**")
+    measurements = anomaly_measurements(row)
+    st.dataframe(measurements, hide_index=True, width="stretch", column_config={
+        "Value (%)": st.column_config.NumberColumn(format="%.2f%%")})
+    st.caption("These measurements are calculated from the saved price features before imputation. "
+               "Blank values mean the required feature was unavailable; the detector uses training-fitted median imputation and missing indicators. "
+               "These are context measurements, not feature contributions or proof of why the case was flagged. "
+               "The classifier’s SHAP explanations concern next-week surge scores, not this anomaly detector.")
+    st.download_button("Download anomaly measurements (CSV)",
+                       measurements.to_csv(index=False).encode("utf-8-sig"),
+                       file_name=f"hargalens_anomaly_{case_id}.csv", mime="text/csv")
 
 
 def explain_case(row, explanations, units):
@@ -928,7 +1031,9 @@ def main():
     review, local_map, evidence = st.tabs(["Latest saved prices", "Price map & playback", "How it works"])
     with review:
         spotlight(history, latest, explanations, entry["forecast_model"], refresh)
-        review_list(latest, refresh, entry["forecast_model"])
+        unusual_cases = review_list(latest, refresh, entry["forecast_model"])
+        if unusual_cases is not None:
+            anomaly_details(unusual_cases, history, run, entry, manifest)
         with st.expander("Food-group overview"):
             group_overview(latest)
         with st.expander("Find a specific item and location"):

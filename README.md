@@ -123,4 +123,6 @@ If dashboard inputs are missing, restore the matching snapshot first. With the r
 
 For the map, select an item/unit and shop type, then move or play the weekly timeline. Gaps remain gaps; grey means insufficient comparable data. District selection pauses playback; reset District to **All** for wider comparisons. Sampled medians do not guarantee the cheapest shop or population coverage.
 
+To inspect anomaly flags, select **Unusual patterns** in the local price watchlist, then choose a case under **Anomaly details**. The panel shows its saved anomaly score, the detector cutoff when verified against the export, recent price history, observation support and six price-change/variation measurements. Missing measurements remain blank; these are not anomaly feature attributions or proof of a source error. Classifier SHAP explanations concern the separate next-week surge score. This view reads existing artifacts and does not require rerunning notebooks 12/13.
+
 Bundled [DOSM district boundaries](assets/malaysia-districts.geojson) are the unmodified 160-feature [official file](https://github.com/dosm-malaysia/data-open/blob/21a78e98efd4cd9b022a27a1bf67d167076b7591/datasets/geodata/administrative_2_district.geojson), retrieved 28 October 2026, under the [Open Data License](assets/DOSM-OPEN-DATA-LICENSE.md). No official endorsement is implied.
