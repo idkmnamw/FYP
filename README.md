@@ -80,7 +80,6 @@ The current deployment and registered models must be verified from real saved ma
 | 09 | Label/anomaly audit; requires completed 05/11 |
 | 10 | Wholesale availability audit; reads existing training caches, no downloads or fitting |
 | 11 | Fixed-parameter festival-calendar experiment; requires completed 09b Optuna outputs |
-| 12 | Optional frozen-dashboard-model evaluation; separate plan/freeze/evaluate actions, local source files only, no fitting or dashboard changes |
 
 Research notebooks are numbered independently from the main pipeline. Renaming does not change their prerequisites or make them a sequence to run in order. Saved data/output folders keep their original names.
 
@@ -101,8 +100,6 @@ Research notebooks are numbered independently from the main pipeline. Renaming d
 Old notebook names are resolved by `pricecatcher_config.py` for legacy callers and saved input references. Hash checks still apply: edited notebook source has a new hash, so exact historical reproduction may require the original Git revision. No saved hashes or model manifests were rewritten.
 
 The research notebooks retain their saved results and methodological caveats. Saved outputs are historical records, not evidence of a fresh cloud execution.
-
-For a separate frozen-model evaluation, use [research 12](research/12_frozen_model_evaluation.ipynb). Start with `ACTION = "plan"` in the matching saved Python environment. Choose the outcome dates and document exposure before `freeze`; `future_holdout` requires a future period, while April–June 2026 must remain `previously_exposed`. Once the complete period closes and the required official monthly Parquet files are available locally, use `evaluate` with the printed protocol path. Results go only under the active run's `research/12_frozen_model_evaluation/`. Existing registered months are blocked even when needed only for history. The notebook does not download data, train, select cutoffs, update the dashboard, or demonstrate timely forecasting; novelty of the period still requires honest disclosure. No main notebook reruns are required.
 
 ## Evaluation and claims
 
