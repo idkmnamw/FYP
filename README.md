@@ -63,7 +63,7 @@ Uncached source downloads require `storage.data.gov.my`. A hash or source mismat
 
 Artifact names retain earlier numbering: main 12 writes to `08_dashboard`, main 13 uses `09_refresh`, and old exports may reference `07_anomalies` or `06_models`. The VS Code settings hide some generated folders; hidden does not mean safe to delete. Check references before removing or renaming files.
 
-Input references use `run::` and `repo::`, with legacy paths resolved by the config module. Saved hashes remain authoritative. Keep the matching Git revision for exact historical reproduction. Some notebook files are fingerprinted as whole files, so even markdown edits can change provenance on a future run; the cleanup leaves the shared 09b/12 helper notebooks unchanged.
+Input references use `run::` and `repo::`, with legacy paths resolved by the config module. Saved hashes remain authoritative. Keep the matching Git revision for exact historical reproduction. Some notebook files are fingerprinted as whole files. Documentation edits preserve calculations and saved outputs but change those source fingerprints, so a later rerun may create a new result folder. Keep the original revision for exact historical reproduction; stored manifests and hashes are not rewritten.
 
 ## Research notebooks
 
